@@ -1,6 +1,6 @@
-# Whooshing 文件系统
+# Whooshing 文件存储依赖库
 
-本项目为 [Whooshing](https://github.com/SJJC-Team/whooshing) 系统的**文件系统依赖库**，旨在构建一套流式、强安全、隐私保护的文件传输与存储加密系统。契合 [Whooshing](https://github.com/SJJC-Team/whooshing) 系统，强调模块之间的数据不透明性、文件系统可扩展性，以及对用户数据的零信任加密。
+本项目为 [Whooshing](https://github.com/SJJC-Team/whooshing) 系统的**文件存储依赖库**，旨在构建一套流式、强安全、隐私保护的文件传输与存储加密系统。契合 [Whooshing](https://github.com/SJJC-Team/whooshing) 系统，强调模块之间的数据不透明性、文件系统可扩展性，以及对用户数据的零信任加密。
 
 
 
