@@ -1,5 +1,5 @@
 {
-  "originHash" : "fba49ed9cc75255271038826392bdf58ac15e28e182332999a6df6f34f73aa92",
+  "originHash" : "b8f1730bf01f11349d88af26ebfaf887d47069b0950a4199f2bd4155312a8c7e",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -314,15 +314,6 @@
       "state" : {
         "revision" : "24f6413003fee8991421ea3be8a2acc2eb36f994",
         "version" : "1.3.9"
-      }
-    },
-    {
-      "identity" : "whooshing.toolbox-pgsql",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/SJJC-Team/whooshing.toolbox-pgsql.git",
-      "state" : {
-        "revision" : "5164ad65ae96ae5fd7b1a30950b0e4112f70a2f5",
-        "version" : "1.0.2"
       }
     }
   ],
