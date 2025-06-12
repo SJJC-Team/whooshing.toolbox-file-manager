@@ -23,7 +23,9 @@ final class FileIndex: PGModel, @unchecked Sendable {
     @Field(fields.size)                             var size: Int64
     @Timestamp(fields.createdAt, on: .create)       var createdAt: Date?
     @Timestamp(fields.updateAt, on: .update)        var updatedAt: Date?
+}
 
+extension FileIndex {
     struct MIG: PGMigration, Sendable {
         typealias DataModel = FileIndex
         

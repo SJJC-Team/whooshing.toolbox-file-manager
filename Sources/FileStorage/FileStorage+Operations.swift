@@ -1,15 +1,10 @@
 import Fluent
 import FluentPostgresDriver
 import ErrorHandle
+import NIOCore
 
 extension FileStorage {
     
-    func createDirectory(at path: String) throws {
-        
-    }
     
-    func deleteDirectory(at path: String) throws {
-        
-    }
     
 }

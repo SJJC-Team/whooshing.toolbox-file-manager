@@ -17,11 +17,13 @@ public struct FileStorage: Sendable {
         case unknow = "未知错误"
     }
     
-    private let eventLoop: EventLoop
-    private let storagePath: String
-    private let indexDatabase: Database
+    let eventLoop: EventLoop
+    let storagePath: String
+    let indexDatabase: Database
+    let logger: Logger
+    
+    var db: Database { indexDatabase }
     private let dbs: Databases
-    private let logger: Logger
     
     public init(
         eventLoop: EventLoop,

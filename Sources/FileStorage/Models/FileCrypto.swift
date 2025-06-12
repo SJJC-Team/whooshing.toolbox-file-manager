@@ -30,7 +30,9 @@ final class FileCrypto: PGModel, @unchecked Sendable {
     @Field(fields.sharedData)                   private var __sharedData: String
     @Field(fields.chunkSize)                    var chunkSize: Int64
     @Field(fields.storage_key)                  var storage_key: String
+}
 
+extension FileCrypto {
     struct MIG: PGMigration, Sendable {
         typealias DataModel = FileCrypto
         

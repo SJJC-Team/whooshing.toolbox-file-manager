@@ -33,9 +33,11 @@ extension FileIndex {
         case gzip = "application/gzip"
         case formURLEncoded = "application/x-www-form-urlencoded"
         case octetStream = "application/octet-stream"
+        
+        case unknow = "unknow"
 
         // 自定义初始化（如果需要从扩展的 MIME 字符串中恢复）
-        init?(fileExtension: String) {
+        init(fileExtension: String) {
             switch fileExtension.lowercased() {
             case "txt": self = .plain
             case "html", "htm": self = .html
@@ -56,7 +58,7 @@ extension FileIndex {
             case "zip": self = .zip
             case "gz", "gzip": self = .gzip
             case "bin": self = .octetStream
-            default: return nil
+            default: self = .unknow
             }
         }
     }
