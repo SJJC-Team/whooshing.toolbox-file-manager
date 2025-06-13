@@ -20,25 +20,7 @@ public struct File: StorageEntry, Sendable {
     
     public unowned let storage: FileStorage
     
-    init(
-        id: UUID,
-        name: String,
-        mimeType: MimeType,
-        size: Int64,
-        path: StoragePath,
-        createdAt: Date,
-        updatedAt: Date,
-        storage: FileStorage
-    ) {
-        self.id = id
-        self.name = name
-        self.mimeType = mimeType
-        self.size = size
-        self.path = path
-        self.createdAt = createdAt
-        self.updatedAt = updatedAt
-        self.storage = storage
-    }
+    let fileIndex: FileIndex
     
     init(
         from index: FileIndex,
@@ -58,6 +40,7 @@ public struct File: StorageEntry, Sendable {
         self.createdAt = index.createdAt
         self.updatedAt = index.updatedAt
         self.storage = storage
+        self.fileIndex = index
     }
 }
 
@@ -115,5 +98,22 @@ public extension File {
     
     func delete(force: Bool = false) -> EventLoopFuture<Void> {
         FileIndex.query(on: storage.indexDatabase).filter(\.$id == id).delete(force: force)
+    }
+    
+    func rename(as name: String) -> EventLoopFuture<File> {
+        fileIndex.name = name
+        return fileIndex.update(on: storage.indexDatabase).flatMapThrowing {
+            try .init(from: fileIndex, parent: self.path.parent, storage: storage)
+        }
+    }
+    
+    func move(to dir: Directory, as name: String? = nil) -> EventLoopFuture<File> {
+        fileIndex.parent = dir.fileIndex.isRoot ? nil : dir.fileIndex
+        if let name = name {
+            fileIndex.name = name
+        }
+        return fileIndex.update(on: storage.indexDatabase).flatMapThrowing {
+            try .init(from: fileIndex, parent: self.path.parent, storage: storage)
+        }
     }
 }

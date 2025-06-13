@@ -24,18 +24,12 @@ public final class FileStorage: @unchecked Sendable {
     let rootInfo: RootInfo
     
     public lazy private(set) var rootDir: Directory = {
-        .init(
-            id: nil,
-            name: "",
-            path: .root,
-            createdAt: rootInfo.createDate,
-            updatedAt: rootInfo.modifyDate,
-            storage: self
-        )
+        try! .init(from: rootDirIndex, parent: nil, storage: self)
     }()
     
     lazy private(set) var rootDirIndex: FileIndex = {
-        let index = FileIndex()
+        let index = FileIndex(isRoot: true)
+        index.name = ""
         index.id = nil
         index.type = .directory
         index.parent = nil

@@ -2,6 +2,7 @@ import PgSQL
 import Foundation
 
 final class FileIndex: PGModel, @unchecked Sendable {
+    
     static let name = "file_cryptos"
     
     struct Fields: PGFields {
@@ -23,6 +24,15 @@ final class FileIndex: PGModel, @unchecked Sendable {
     @Field(fields.size)                             var size: Int64?
     @Timestamp(fields.createdAt, on: .create)       var createdAt: Date!
     @Timestamp(fields.updateAt, on: .update)        var updatedAt: Date!
+    
+    let isRoot: Bool
+    
+    func getId() throws -> UUID? {
+        self.isRoot ? nil : try self.requireID()
+    }
+    
+    init(isRoot: Bool = false) { self.isRoot = isRoot }
+    convenience init() { self.init(isRoot: false) }
 }
 
 extension FileIndex {

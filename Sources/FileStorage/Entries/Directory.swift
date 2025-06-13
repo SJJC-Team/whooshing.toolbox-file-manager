@@ -13,34 +13,21 @@ public struct Directory: StorageEntry, Sendable {
     
     public unowned let storage: FileStorage
     
-    init(
-        id: UUID?,
-        name: String,
-        path: StoragePath,
-        createdAt: Date,
-        updatedAt: Date,
-        storage: FileStorage
-    ) {
-        self.id = id
-        self.name = name
-        self.path = path
-        self.createdAt = createdAt
-        self.updatedAt = updatedAt
-        self.storage = storage
-    }
+    let fileIndex: FileIndex
     
     init(
         from index: FileIndex,
-        parent: StoragePath,
+        parent: StoragePath?,
         storage: FileStorage
     ) throws {
         guard index.type == .directory else { throw Err.indexTypeIsNotDirectory.d(16023) }
-        self.id = index.id
+        self.id = try index.getId()
         self.name = index.name
-        self.path = parent + index.name
+        self.path = parent == nil ? "<<ROOT>>" : (parent! + index.name)
         self.createdAt = index.createdAt
         self.updatedAt = index.updatedAt
         self.storage = storage
+        self.fileIndex = index
     }
 }
 
@@ -69,7 +56,7 @@ public extension Directory {
         }
     }
     
-    func subitems() -> EventLoopFuture<[StorageEntry]> {
+    func subitems() -> EventLoopFuture<[any StorageEntry]> {
         FileIndex.query(on: storage.indexDatabase).filter(\.$parent.$id == id).all().flatMapThrowing { fileIndex in
             try fileIndex.map { index in
                 switch index.type {
@@ -85,7 +72,27 @@ public extension Directory {
     }
     
     func delete(force: Bool = false) -> EventLoopFuture<Void> {
+        guard !self.isRoot else { preconditionFailure("不可操作根目录") }
         guard let id = self.id else { return storage.eventLoop.makeFailedFuture(Err.deleteFailed.d("不能删除根目录", 16021)) }
         return FileIndex.query(on: storage.indexDatabase).filter(\.$id == id).delete(force: force)
+    }
+    
+    func rename(as name: String) -> EventLoopFuture<Directory> {
+        guard !self.isRoot else { preconditionFailure("不可操作根目录") }
+        fileIndex.name = name
+        return fileIndex.update(on: storage.indexDatabase).flatMapThrowing {
+            try .init(from: fileIndex, parent: self.path.isRoot ? nil : self.path.parent, storage: storage)
+        }
+    }
+    
+    func move(to dir: Directory, as name: String? = nil) -> EventLoopFuture<Directory> {
+        guard !self.isRoot else { preconditionFailure("不可操作根目录") }
+        fileIndex.parent = dir.fileIndex.isRoot ? nil : dir.fileIndex
+        if let name = name {
+            fileIndex.name = name
+        }
+        return fileIndex.update(on: storage.indexDatabase).flatMapThrowing {
+            try .init(from: fileIndex, parent: self.path.isRoot ? nil : self.path.parent, storage: storage)
+        }
     }
 }

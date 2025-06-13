@@ -1,5 +1,6 @@
 import Foundation
 import FluentKit
+import NIOCore
 
 public protocol StorageEntry: Sendable {
     var name: String { get }
@@ -8,19 +9,15 @@ public protocol StorageEntry: Sendable {
     var updatedAt: Date { get }
     
     func delete(force: Bool) -> EventLoopFuture<Void>
+    func rename(as name: String) -> EventLoopFuture<Self>
+    func move(to path: StoragePath, as name: String?) -> EventLoopFuture<Self>
+    func move(to dir: Directory, as name: String?) -> EventLoopFuture<Self>
 }
 
-extension StorageEntry {
-    static func factory(
-        from index: FileIndex,
-        parent: StoragePath,
-        storage: FileStorage
-    ) throws -> Self {
-        if self.self == File.self {
-            return (try File(from: index, parent: parent, storage: storage)) as! Self
-        } else if self.self == Directory.self {
-            return (try Directory(from: index, parent: parent, storage: storage)) as! Self
+public extension StorageEntry {
+    func move(to path: StoragePath, as name: String?) -> EventLoopFuture<Self> {
+        storage.getDirectory(at: path).flatMap { dir in
+            move(to: dir, as: name)
         }
-        fatalError("不应执行至此")
     }
 }
