@@ -3,7 +3,7 @@ import Foundation
 
 final class FileIndex: PGModel, @unchecked Sendable {
     static let name = "file_cryptos"
-        
+    
     struct Fields: PGFields {
         let id = PGField("id", .uuid)                                           .primary
         let name = PGField("name", .string)                                     .required
@@ -17,12 +17,12 @@ final class FileIndex: PGModel, @unchecked Sendable {
     
     @ID(key: .id)                                   var id: UUID?
     @Field(fields.name)                             var name: String
-    @OptionalEnum(fields.mimeType)                  var mimeType: MimeType?
+    @OptionalEnum(fields.mimeType)                  var mimeType: File.MimeType?
     @OptionalParent(fields.parent)                  var parent: FileIndex?
-    @Enum(fields.type)                              var type: FileType
-    @Field(fields.size)                             var size: Int64
-    @Timestamp(fields.createdAt, on: .create)       var createdAt: Date?
-    @Timestamp(fields.updateAt, on: .update)        var updatedAt: Date?
+    @Enum(fields.type)                              var type: File.Typed
+    @Field(fields.size)                             var size: Int64?
+    @Timestamp(fields.createdAt, on: .create)       var createdAt: Date!
+    @Timestamp(fields.updateAt, on: .update)        var updatedAt: Date!
 }
 
 extension FileIndex {

@@ -1,8 +1,12 @@
 import Fluent
 import FluentPostgresDriver
 import ErrorHandle
+import Cryptos
+import Foundation
 
-public struct FileStorage: Sendable {
+public final class FileStorage: @unchecked Sendable {
+    
+    public static let CryptoFileExtension = "wooclassified"
     
     public struct Debuging: Sendable {
         let tdeEncrypt: Bool
@@ -11,16 +15,34 @@ public struct FileStorage: Sendable {
         }
     }
     
-    public enum Err: String, ErrList {
-        public var domain: String { "woo.sys.file.storage.err" }
-        case databaseInitFailed = "数据库连接失败"
-        case unknow = "未知错误"
-    }
+    public let eventLoop: EventLoop
+    public let logger: Logger
     
-    let eventLoop: EventLoop
     let storagePath: String
     let indexDatabase: Database
-    let logger: Logger
+    let masterKey: Crypto.Symm.Key
+    let rootInfo: RootInfo
+    
+    public lazy private(set) var rootDir: Directory = {
+        .init(
+            id: nil,
+            name: "",
+            path: .root,
+            createdAt: rootInfo.createDate,
+            updatedAt: rootInfo.modifyDate,
+            storage: self
+        )
+    }()
+    
+    lazy private(set) var rootDirIndex: FileIndex = {
+        let index = FileIndex()
+        index.id = nil
+        index.type = .directory
+        index.parent = nil
+        index.size = nil
+        index.mimeType = nil
+        return index
+    }()
     
     var db: Database { indexDatabase }
     private let dbs: Databases
@@ -29,13 +51,28 @@ public struct FileStorage: Sendable {
         eventLoop: EventLoop,
         storagePath: String,
         indexDatabaseConfigure: SQLPostgresConfiguration,
+        masterKey: Crypto.Symm.Key,
         logger: Logger,
         debuging: Debuging? = nil
     ) async throws {
+        
+        let fileAttributes = try FileManager.default.attributesOfItem(atPath: storagePath)
+        guard
+            let createDate = fileAttributes[.creationDate] as? Date,
+            let modifyDate = fileAttributes[.modificationDate]  as? Date,
+            let type = fileAttributes[.type] as? FileAttributeType,
+            type == .typeDirectory
+        else {
+            throw Err.fileSystemInitFailed.d("根目录参数读取失败", 16025)
+        }
+        
+        self.rootInfo = .init(createDate: createDate, modifyDate: modifyDate)
         self.eventLoop = eventLoop
         self.storagePath = storagePath
+        self.masterKey = masterKey
         self.logger = logger
         self.dbs = Databases(threadPool: .singleton, on: eventLoop)
+        
         do {
             self.dbs.use(.postgres(configuration: indexDatabaseConfigure), as: .psql)
             
@@ -60,5 +97,12 @@ public struct FileStorage: Sendable {
             try? await eventLoop.shutdownGracefully()
             throw error
         }
+    }
+}
+
+extension FileStorage {
+    struct RootInfo: Sendable {
+        let createDate: Date
+        let modifyDate: Date
     }
 }

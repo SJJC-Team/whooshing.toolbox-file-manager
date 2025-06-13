@@ -6,10 +6,10 @@ import PackageDescription
 let package = Package(
     name: "whooshing.toolbox-file-storage",
     platforms: [
-        .macOS(.v10_15),
+        .macOS(.v11),
         .iOS(.v14),
-        .watchOS(.v6),
-        .tvOS(.v13),
+        .watchOS(.v7),
+        .tvOS(.v14),
     ],
     products: [
         .library( name: "FileStorage", targets: ["FileStorage"] )
@@ -17,7 +17,8 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
         .package(url: "https://github.com/vapor/fluent-postgres-driver.git", from: "2.10.0"),
-        .package(url: "https://github.com/SJJC-Team/whooshing.toolbox-basic.git", .upToNextMajor(from: "1.3.9")),
+//        .package(url: "https://github.com/SJJC-Team/whooshing.toolbox-basic.git", .upToNextMajor(from: "1.3.9")),
+        .package(path: "/Users/clwang/GitHub/whooshing.toolbox-basic"),
 //        .package(url: "https://github.com/SJJC-Team/whooshing.toolbox-pgsql.git", .upToNextMajor(from: "1.0.0")),
         .package(path: "/Users/clwang/GitHub/whooshing.toolbox-pgsql")
     ],
@@ -30,7 +31,8 @@ let package = Package(
                 .product(name: "PgSQL", package: "whooshing.toolbox-pgsql"),
                 .product(name: "ErrorHandle", package: "whooshing.toolbox-basic"),
                 .product(name: "DataConvertable", package: "whooshing.toolbox-basic"),
-                .product(name: "Cryptos", package: "whooshing.toolbox-basic")
+                .product(name: "Cryptos", package: "whooshing.toolbox-basic"),
+                .product(name: "_NIOFileSystem", package: "swift-nio"),
             ]
         ),
         .testTarget(

@@ -1,6 +1,6 @@
-extension FileIndex {
+public extension File {
     
-    enum FileType: String, Codable, Sendable {
+    enum Typed: String, Codable, Sendable {
         case file = "file"
         case directory = "directory"
     }
@@ -37,7 +37,7 @@ extension FileIndex {
         case unknow = "unknow"
 
         // 自定义初始化（如果需要从扩展的 MIME 字符串中恢复）
-        init(fileExtension: String) {
+        public init(fileExtension: String) {
             switch fileExtension.lowercased() {
             case "txt": self = .plain
             case "html", "htm": self = .html

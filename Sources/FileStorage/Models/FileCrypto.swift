@@ -29,7 +29,7 @@ final class FileCrypto: PGModel, @unchecked Sendable {
     @Field(fields.salt)                         private var __salt: String
     @Field(fields.sharedData)                   private var __sharedData: String
     @Field(fields.chunkSize)                    var chunkSize: Int64
-    @Field(fields.storage_key)                  var storage_key: String
+    @Field(fields.storage_key)                  var storageKey: String
 }
 
 extension FileCrypto {
