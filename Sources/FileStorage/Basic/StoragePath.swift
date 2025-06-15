@@ -2,8 +2,7 @@ import ErrorHandle
 
 public struct StoragePath: Sendable {
     
-    enum Err: String, ErrList {
-        var domain: String { "woo.sys.storage.path.err" }
+    public enum Errcase: String, ErrList {
         case removeCountExceed = "要移除的路径项数目超限"
         case removeFromHeadFailed = "从路径头移除失败"
         case removeFromTailFailed = "从路径尾移除失败"
@@ -86,25 +85,25 @@ extension StoragePath: Equatable {
         case head, tail
     }
     
-    public func remove(_ subPath: String, from direction: RemoveDirection = .tail) throws -> StoragePath {
+    public func remove(_ subPath: String, from direction: RemoveDirection = .tail) throws(BscError<Errcase>) -> StoragePath {
         try remove(StoragePath(stringLiteral: subPath), from: direction)
     }
     
-    public func remove(components: [String], from direction: RemoveDirection = .tail) throws -> StoragePath {
+    public func remove(components: [String], from direction: RemoveDirection = .tail) throws(BscError<Errcase>) -> StoragePath {
         try remove(StoragePath(components: components), from: direction)
     }
     
-    public func remove(_ subPath: StoragePath, from direction: RemoveDirection = .tail) throws -> StoragePath {
+    public func remove(_ subPath: StoragePath, from direction: RemoveDirection = .tail) throws(BscError<Errcase>) -> StoragePath {
         if direction == .tail {
-            guard subPath.isSuffixPath(of: self) else { throw Err.removeFromTailFailed.d(16011) }
+            guard subPath.isSuffixPath(of: self) else { throw Errcase.removeFromTailFailed.d() }
         } else {
-            guard subPath.isPrefixPath(of: self) else { throw Err.removeFromHeadFailed.d(16012) }
+            guard subPath.isPrefixPath(of: self) else { throw Errcase.removeFromHeadFailed.d() }
         }
         return try self.remove(of: subPath.count, from: direction)
     }
     
-    public func remove(of count: Int, from direction: RemoveDirection = .tail) throws -> StoragePath {
-        guard self.count >= count else { throw Err.removeCountExceed.d("预期为 \(self.count), 却得到 \(count)", 16010) }
+    public func remove(of count: Int, from direction: RemoveDirection = .tail) throws(BscError<Errcase>) -> StoragePath {
+        guard self.count >= count else { throw Errcase.removeCountExceed.d("预期为 \(self.count), 却得到 \(count)") }
         var components = self.components
         for _ in 0..<count {
             if direction == .tail {

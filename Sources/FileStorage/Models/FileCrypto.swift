@@ -9,7 +9,7 @@ final class FileCrypto: PGModel, @unchecked Sendable {
         let id = PGField("file_id", .uuid)                          .primary.foreign(FileIndex.self, FileIndex.fields.id)
         let salt = PGField("hkdf_salt", .string)                    .required.unique
         let sharedData = PGField("hkdf_shared_data", .string)       .required
-        let chunkSize = PGField("chunk_size", .int64)               .required
+        let chunks = PGField("chunks", .array(of: .int64))          .required
         let encryptedSize = PGField("encrypted_size", .int64)       .required
         let storage_key = PGField("storage_key", .string)           .required.unique
     }
@@ -24,7 +24,7 @@ final class FileCrypto: PGModel, @unchecked Sendable {
     
     @Field(fields.salt)                         private var __salt: String
     @Field(fields.sharedData)                   var sharedData: String
-    @Field(fields.chunkSize)                    var chunkSize: Int64
+    @Field(fields.chunks)                       var chunks: [Int64]
     @Field(fields.encryptedSize)                var encryptedSize: Int64
     @Field(fields.storage_key)                  var storageKey: String
 }

@@ -48,16 +48,18 @@ public final class FileStorage: @unchecked Sendable {
         masterKey: Crypto.Symm.Key,
         logger: Logger,
         debuging: Debuging? = nil
-    ) async throws {
+    ) async throws(BscError<Errcase>) {
         
-        let fileAttributes = try FileManager.default.attributesOfItem(atPath: storagePath)
+        let fileAttributes = try required(throws: Errcase.fileSystemInitFailed, "文件信息参数读取失败") {
+            try FileManager.default.attributesOfItem(atPath: storagePath)
+        }
         guard
             let createDate = fileAttributes[.creationDate] as? Date,
             let modifyDate = fileAttributes[.modificationDate]  as? Date,
             let type = fileAttributes[.type] as? FileAttributeType,
             type == .typeDirectory
         else {
-            throw Err.fileSystemInitFailed.d("根目录参数读取失败", 16025)
+            throw Errcase.fileSystemInitFailed.d("根目录参数读取失败")
         }
         
         self.rootInfo = .init(createDate: createDate, modifyDate: modifyDate)
@@ -81,16 +83,16 @@ public final class FileStorage: @unchecked Sendable {
             )
             try await mig.setupIfNeeded().get()
             try await mig.prepareBatch().get()
-            
-            guard let db = self.dbs.database(logger: logger, on: eventLoop) else {
-                throw Err.databaseInitFailed.d(16001)
-            }
-            self.indexDatabase = db
         } catch {
             await self.dbs.shutdownAsync()
             try? await eventLoop.shutdownGracefully()
-            throw error
+            throw Errcase.databaseInitFailed.d("数据库迁移失败").subErr(error)
         }
+        
+        guard let db = self.dbs.database(logger: logger, on: eventLoop) else {
+            throw Errcase.databaseInitFailed.d()
+        }
+        self.indexDatabase = db
     }
 }
 

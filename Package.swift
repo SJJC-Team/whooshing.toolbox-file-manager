@@ -30,6 +30,7 @@ let package = Package(
                 .product(name: "NIOPosix", package: "swift-nio"),
                 .product(name: "PgSQL", package: "whooshing.toolbox-pgsql"),
                 .product(name: "ErrorHandle", package: "whooshing.toolbox-basic"),
+                .product(name: "NIOAdvanced", package: "whooshing.toolbox-basic"),
                 .product(name: "DataConvertable", package: "whooshing.toolbox-basic"),
                 .product(name: "Cryptos", package: "whooshing.toolbox-basic"),
                 .product(name: "_NIOFileSystem", package: "swift-nio"),
