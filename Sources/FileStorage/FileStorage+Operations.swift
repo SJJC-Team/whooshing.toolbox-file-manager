@@ -33,6 +33,8 @@ public extension FileStorage {
         case deleteFileFailed = "删除文件失败"
         case renameFileFailed = "重命名文件失败"
         case moveFileFailed = "移动文件失败"
+        case readFileFailed = "文件读取失败"
+        case writeFileFailed = "文件写入失败"
     }
 }
 
@@ -179,23 +181,26 @@ extension FileStorage {
     public enum DatabaseErrcase: String, ErrList {
         case saveFailed = "数据库保存动作失败"
         case queryFailed = "数据库查询失败"
+        case fetchIdFailed = "获取实例 ID 失败"
     }
     
     func getChild(
         at index: FileIndex,
         name: String
     ) -> EventLoopResult<FileIndex?, BscError<DatabaseErrcase>> {
+        let id: UUID?
+        
         do {
-            let id = try index.getId()
-            return FileIndex.query(on: self.indexDatabase)
-                .filter(\.$parent.$id == id)
-                .filter(\.$name == name)
-                .first()
-                .withError(DatabaseErrcase.queryFailed)
-                
+            id = try index.getId()
         } catch {
-            return eventLoop.makeFailedFuture(error).withError()
+            return eventLoop.makeFailedResult(DatabaseErrcase.fetchIdFailed.subErr(error))
         }
+        
+        return FileIndex.query(on: self.indexDatabase)
+            .filter(\.$parent.$id == id)
+            .filter(\.$name == name)
+            .first()
+            .withError(DatabaseErrcase.queryFailed)
     }
     
     func getParent(
@@ -260,6 +265,7 @@ extension FileStorage {
         let fileCrypto = FileCrypto()
         fileCrypto.fileIndex = file
         fileCrypto.chunks = []
+        fileCrypto.chunkTags = []
         fileCrypto.encryptedSize = 0
         fileCrypto.salt = saltGenerate()
         fileCrypto.sharedData = sharedDataGenerate(file: file)

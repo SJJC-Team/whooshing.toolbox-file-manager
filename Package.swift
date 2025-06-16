@@ -34,6 +34,9 @@ let package = Package(
                 .product(name: "DataConvertable", package: "whooshing.toolbox-basic"),
                 .product(name: "Cryptos", package: "whooshing.toolbox-basic"),
                 .product(name: "_NIOFileSystem", package: "swift-nio"),
+            ],
+            resources: [
+                .process("Entries/Diagrams")
             ]
         ),
         .testTarget(
