@@ -63,7 +63,7 @@ public extension File {
     func isExist() async -> Bool {
         (try? await FileIndex.query(on: storage.indexDatabase).filter(\.$id == id).first()) != nil
     }
-    
+//    
 //    func write(from start: Int64 = 0, with data: ByteBuffer) -> EventLoopResult<Void, BscError<Errcase>> {
 //        // 创建读取任务准备进行异步写入
 //        
@@ -139,7 +139,7 @@ extension File {
         let readRange: Range<Int64>
         
         // 计算数据的落点分布
-        let intersectionResult: ChunkHelpers.Intersection
+        let intersectionResult: ChunkHelpers.IntersectionResult
         
         switch part {
         case .all:
@@ -241,119 +241,6 @@ extension File {
         
         
         
-    }
-}
-
-enum ChunkHelpers {
-    
-    struct Intersection: Equatable, CustomStringConvertible {
-        let rangeOffset: Int64
-        let chunkIndex: Int
-        let chunkBegin: Int64
-        let chunks: [Int64]
-        
-        static func == (lhs: Self, rhs: Self) -> Bool {
-            lhs.rangeOffset == rhs.rangeOffset &&
-            lhs.chunkBegin == rhs.chunkBegin &&
-            lhs.chunks == rhs.chunks
-        }
-        
-        var description: String {
-            "(rangeOffset: \(rangeOffset), chunkBegin: \(chunkBegin), chunks: [\(chunks.map { String($0) }.joined(separator: ", "))])"
-        }
-    }
-    
-    /// 判断字节 range 具体落在哪些实际 buffers
-    ///
-    /// - Parameters:
-    ///     - range: 字节范围
-    ///     - chunks: 所有块大小
-    ///     - offset: 块大小的大小偏移量，即 `offsetChunks = [chunks].map { $0 + offset }`
-    ///
-    /// - Returns:
-    ///     - **`rangeOffset`**: range 的起始偏移地址，相对于 `chunkBegin`
-    ///     - **`chunkIndex`**: chunks 的起始索引
-    ///     - **`chunkBegin`**: chunks 的起始字节位
-    ///     - **`chunks`**: 需要处理的 chunks
-    ///
-    /// -----------
-    /// ### 输入参数:
-    /// ```
-    ///               [-------------------------]                           : range
-    /// [----   |--------   |----   |------   |----   |------   |---   ]    : chunks
-    /// [-------|-----------|-------|---------|-------|---------|------]
-    ///      |  |        |  |    |  |      |  |    |  |      |  |   |  |
-    ///      <-->        <-->    <-->      <-->    <-->      <-->   <-->    : offset
-    /// ```
-    ///
-    /// ### 返回参数:
-    /// ```
-    ///               [-------------------------]                           : range
-    /// [----   |--------   |----   |------   |----   |------   |---   ]    : chunks
-    /// [-------|-----------|-------|---------|-------|---------|------]
-    /// |       |     |                               |
-    /// |       <----->                               |                     : rangeOffset
-    /// <------->                                     |                     : chunkIndex(Index)
-    /// <------->                                     |                     : chunkBegin
-    ///         <------------------------------------->                     : chunks
-    /// ```
-    ///
-    static func rangeIntersection(_ range: Range<Int64>, in chunks: [Int64], offset: Int64) throws(BscError<RangeIntersectionErrcase>) -> Intersection {
-        var res: [Int64] = []
-        var record = false
-        var curChunkIndex = Int64(0)
-        var rangeBegin = Int64(-1)
-        var chunkBegin = Int64(-1)
-        var chunkIndex = -1
-        for (i, chunk) in chunks.enumerated() {
-            let curChunkRange = curChunkIndex..<(curChunkIndex + chunk)
-            
-            if curChunkRange.contains(range.lowerBound) {
-                // 开始记录
-                rangeBegin = range.lowerBound - curChunkRange.lowerBound
-                chunkBegin = curChunkRange.lowerBound + Int64(i) * offset
-                chunkIndex = i
-                
-                // 如果 range 是空的，在此处退出，保证 rangeBegin 与 chunkBegin 正确设置
-                guard !range.isEmpty else { break }
-                
-                record = true
-            }
-            
-            if record {
-                res.append(chunk + Int64(offset))
-            }
-            
-            // 若查到 range 到头，则终止记录
-            guard range.isEmpty || !curChunkRange.contains(range.upperBound - 1) else { record = false; break }
-            
-            curChunkIndex += chunk
-        }
-        
-        guard record == false else { throw .init(.rangeSizeExceed) }
-        guard rangeBegin != -1 else { throw .init(.rangeNotFound) }
-        
-        return .init(rangeOffset: rangeBegin, chunkIndex: chunkIndex, chunkBegin: chunkBegin, chunks: res)
-    }
-    
-    public enum RangeIntersectionErrcase: String, ErrList {
-        case rangeNotFound = "Range 起始边界未找到"
-        case rangeSizeExceed = "Range 结束边界未找到，其大小超过限制"
-    }
-    
-    static func rangeIntersection(_ range: ClosedRange<Int64>, in chunks: [Int64], offset: Int64) throws(BscError<RangeIntersectionErrcase>) -> Intersection {
-        try rangeIntersection(.init(range), in: chunks, offset: offset)
-    }
-    
-    public enum IndexErrcase: String, ErrList {
-        case intersectionFailed = "落点计算失败"
-    }
-    
-    static func index(_ index: Int64, in buffer: [Int64], offset: Int64) throws(BscError<IndexErrcase>) -> (rangeOffset: Int64, chunkBegin: Int64) {
-        let intersection = try required(throws: BscError<IndexErrcase>(.intersectionFailed)) {
-            try rangeIntersection(index..<index, in: buffer, offset: offset)
-        }
-        return (intersection.rangeOffset, intersection.chunkBegin)
     }
 }
 

@@ -2,57 +2,57 @@ import Testing
 import ErrorHandle
 @testable import FileStorage
 
-@Suite("ChunkHelper 测试集")
-struct ChunkHelperTests {
+@Suite("ChunkHelper 落点计算算法测试集")
+struct ChunkHelpeIntersectionrTests {
     
-    static let rangeSet: [(Range<Int64>, [Int64], Int64, Result<ChunkHelpers.Intersection, ChunkHelpers.RangeIntersectionErrcase>)] = [
+    static let rangeSet: [(Range<Int64>, [Int64], Int64, Result<ChunkHelpers.IntersectionResult, ChunkHelpers.RangeErrcase>)] = [
         (
             0..<5,
             [5, 5, 5],
             2,
-            .success(ChunkHelpers.Intersection(rangeOffset: 0, chunkBegin: 0, chunks: [7]))
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, chunkIndex: 0, chunkBegin: 0, chunks: [7]))
         ),
         (
             5..<5,
             [5, 5, 5],
             2,
-            .success(ChunkHelpers.Intersection(rangeOffset: 0, chunkBegin: 7, chunks: []))
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, chunkIndex: 1, chunkBegin: 7, chunks: []))
         ),
         (
             10..<13,
             [5, 3, 5, 8, 6],
             2,
-            .success(ChunkHelpers.Intersection(rangeOffset: 2, chunkBegin: 12, chunks: [7]))
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 2, chunkIndex: 2, chunkBegin: 12, chunks: [7]))
         ),
         (
             10..<14,
             [5, 3, 5, 8, 6],
             2,
-            .success(ChunkHelpers.Intersection(rangeOffset: 2, chunkBegin: 12, chunks: [7, 10]))
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 2, chunkIndex: 2, chunkBegin: 12, chunks: [7, 10]))
         ),
         (
             100..<100,
             [5, 3, 5, 8, 6],
             2,
-            .failure(.rangeNotFound)
+            .failure(.rangeBeginIndexNotFound)
         ),
         (
             11..<11,
             [5, 3, 5, 8, 6],
             2,
-            .success(ChunkHelpers.Intersection(rangeOffset: 3, chunkBegin: 12, chunks: []))
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 3, chunkIndex: 2, chunkBegin: 12, chunks: []))
         ),
         (
             -5..<100,
             [5, 5, 5],
             2,
-            .failure(.rangeNotFound)
+            .failure(.rangeBeginIndexNotFound)
         ),
         (
             -5..<(-5),
             [5, 5, 5],
             2,
-            .failure(.rangeNotFound)
+            .failure(.rangeBeginIndexNotFound)
         ),
         (
             8192..<81920,
@@ -64,11 +64,23 @@ struct ChunkHelperTests {
             8192..<81920,
             [65535, 8192, 21340],
             16,
-            .success(ChunkHelpers.Intersection(rangeOffset: 8192, chunkBegin: 0, chunks: [65535 + 16, 8192 + 16, 21340 + 16]))
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 8192, chunkIndex: 0, chunkBegin: 0, chunks: [65535 + 16, 8192 + 16, 21340 + 16]))
+        ),
+        (
+            5..<10,
+            [],
+            16,
+            .failure(.rangeBeginIndexNotFound)
+        ),
+        (
+            0..<0,
+            [],
+            0,
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, chunkIndex: 0, chunkBegin: 0, chunks: []))
         )
     ]
     
-    static let closedRangeSet: [(ClosedRange<Int64>, [Int64], Int64, Result<ChunkHelpers.Intersection, ChunkHelpers.RangeIntersectionErrcase>)] = rangeSet.compactMap {
+    static let closedRangeSet: [(ClosedRange<Int64>, [Int64], Int64, Result<ChunkHelpers.IntersectionResult, ChunkHelpers.RangeErrcase>)] = rangeSet.compactMap {
         if $0.0.upperBound == $0.0.lowerBound {
             return nil
         }
@@ -95,7 +107,7 @@ struct ChunkHelperTests {
         range: Range<Int64>,
         buffers: [Int64],
         offset: Int64,
-        expect: Result<ChunkHelpers.Intersection, ChunkHelpers.RangeIntersectionErrcase>
+        expect: Result<ChunkHelpers.IntersectionResult, ChunkHelpers.RangeErrcase>
     ) async throws {
         switch expect {
         case .success(let expect):
@@ -116,7 +128,7 @@ struct ChunkHelperTests {
         range: ClosedRange<Int64>,
         buffers: [Int64],
         offset: Int64,
-        expect: Result<ChunkHelpers.Intersection, ChunkHelpers.RangeIntersectionErrcase>
+        expect: Result<ChunkHelpers.IntersectionResult, ChunkHelpers.RangeErrcase>
     ) async throws {
         switch expect {
         case .success(let expect):
@@ -155,5 +167,5 @@ struct ChunkHelperTests {
     
 }
 
-extension ChunkHelpers.RangeIntersectionErrcase: Error {}
+extension ChunkHelpers.RangeErrcase: Error {}
 extension ChunkHelpers.IndexErrcase: Error {}
