@@ -5,7 +5,7 @@ import ErrorHandle
 @Suite("ChunkHelper 重分割算法测试集")
 struct ChunkHelperReseparationTests {
     
-    static let replacementParaSet: [([Int64], Int64, [Int64], Result<ChunkHelpers.ReseparationResult, ChunkHelpers.RangeErrcase>)] = [
+    static let replacementParaSet: [(BufferSpace, Int64, BufferSpace, Result<ChunkHelpers.ReseparationResult, ChunkHelpers.RangeErrcase>)] = [
         (
             [5, 6, 7],
             2,
@@ -136,9 +136,9 @@ struct ChunkHelperReseparationTests {
     
     @Test("覆写重分割函数测试", arguments: replacementParaSet)
     func replacementReseparationTest(
-        chunks: [Int64],
+        chunks: BufferSpace,
         begin: Int64,
-        originChunks: [Int64],
+        originChunks: BufferSpace,
         expect: Result<ChunkHelpers.ReseparationResult, ChunkHelpers.RangeErrcase>
     ) async throws {
         switch expect {
@@ -156,7 +156,7 @@ struct ChunkHelperReseparationTests {
         }
     }
     
-    static let insertionParaSet: [([Int64], Int64, Int64, Result<ChunkHelpers.ReseparationResult, ChunkHelpers.RangeErrcase>)] = [
+    static let insertionParaSet: [(BufferSpace, Int64, Int64, Result<ChunkHelpers.ReseparationResult, ChunkHelpers.RangeErrcase>)] = [
         (
             [5, 7, 9, 10],
             2,
@@ -242,7 +242,7 @@ struct ChunkHelperReseparationTests {
     
     @Test("插入重分割函数测试", arguments: insertionParaSet)
     func insertionReseparationTest(
-        chunks: [Int64],
+        chunks: BufferSpace,
         begin: Int64,
         chunk: Int64,
         expect: Result<ChunkHelpers.ReseparationResult, ChunkHelpers.RangeErrcase>

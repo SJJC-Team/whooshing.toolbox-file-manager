@@ -35,6 +35,7 @@ public extension FileStorage {
         case moveFileFailed = "移动文件失败"
         case readFileFailed = "文件读取失败"
         case writeFileFailed = "文件写入失败"
+        case openFileFailed = "文件打开失败"
     }
 }
 
@@ -90,8 +91,6 @@ public extension FileStorage {
         withIntermediateDirectories createIfNeed: Bool = false,
         slience: Bool = false
     ) -> EventLoopResult<File, BscError<Errcase>> {
-        
-        
         getParent(at: path, withIntermediateDirectories: createIfNeed)
             .errCast(Errcase.fileCreateFailed, "获取父目录 \"\(path.parent)\" 失败")
             .flatMap

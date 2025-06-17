@@ -70,7 +70,7 @@ extension ChunkHelpers {
     ///         <------------------------------------->                     : chunks
     /// ```
     ///
-    static func rangeIntersection(_ range: Range<Int64>, in chunks: [Int64], offset: Int64) throws(BscError<RangeErrcase>) -> IntersectionResult {
+    static func rangeIntersection(_ range: Range<Int64>, in chunks: BufferSpace, offset: Int64) throws(BscError<RangeErrcase>) -> IntersectionResult {
         
         guard chunks.count > 0 || range.lowerBound > 0 else {
             return .init(rangeOffset: 0, chunkIndex: 0, chunkBegin: 0, chunks: [])
@@ -114,16 +114,16 @@ extension ChunkHelpers {
     }
     
     /// 数据落点分析算法
-    static func rangeIntersection(_ range: ClosedRange<Int64>, in chunks: [Int64], offset: Int64) throws(BscError<RangeErrcase>) -> IntersectionResult {
+    static func rangeIntersection(_ range: ClosedRange<Int64>, in chunks: BufferSpace, offset: Int64) throws(BscError<RangeErrcase>) -> IntersectionResult {
         try rangeIntersection(.init(range), in: chunks, offset: offset)
     }
     
     /// 从数据块寻址算法
-    static func index(_ index: Int64, in buffer: [Int64], offset: Int64) throws(BscError<IndexErrcase>) -> (rangeOffset: Int64, chunkBegin: Int64) {
+    static func index(_ index: Int64, in buffer: BufferSpace, offset: Int64) throws(BscError<IndexErrcase>) -> (rangeOffset: Int64, chunkIndex: Int, chunkBegin: Int64) {
         let intersection = try required(throws: BscError<IndexErrcase>(.intersectionFailed)) {
             try rangeIntersection(index..<index, in: buffer, offset: offset)
         }
-        return (intersection.rangeOffset, intersection.chunkBegin)
+        return (intersection.rangeOffset, intersection.chunkIndex, intersection.chunkBegin)
     }
 }
 
@@ -177,8 +177,7 @@ extension ChunkHelpers {
     }
     
     /// 数据重分割算法-覆写
-    static func replacementReseparation(_ chunks: [Int64], at begin: Int64, in originChunks: [Int64]) throws(BscError<RangeErrcase>) -> ReseparationResult {
-        
+    static func replacementReseparation(_ chunks: BufferSpace, at begin: Int64, in originChunks: BufferSpace) throws(BscError<RangeErrcase>) -> ReseparationResult {
         guard begin >= 0 else {
             throw .init(.rangeSizeInvalid, "起始索引值无效，预期 >= 0，但得到 \(begin)")
         }
@@ -237,7 +236,7 @@ extension ChunkHelpers {
     }
     
     /// 数据重分割算法-插入
-    static func insertionReseparation(_ chunks: [Int64], at begin: Int64, in chunk: Int64) throws(BscError<RangeErrcase>) -> ReseparationResult {
+    static func insertionReseparation(_ chunks: BufferSpace, at begin: Int64, in chunk: Int64) throws(BscError<RangeErrcase>) -> ReseparationResult {
         
         guard begin >= 0, chunk >= 0 else {
             throw .init(.rangeSizeInvalid, "输入参数无效，预期 >= 0，但得到 \(begin) 与 \(chunk)")
@@ -269,5 +268,85 @@ extension ChunkHelpers {
         }
         
         return .init(headCombine: headCombine, tailCombine: tailCombine)
+    }
+}
+
+struct BufferSpace: Collection, ExpressibleByArrayLiteral {
+    
+    typealias ArrayLiteralElement = Int64
+    typealias Index = Int
+    typealias Element = Int64
+    
+    private var contents: Contents
+    
+    enum Contents {
+        case array(_ array: [Element])
+        case chunk(_ chunkSize: Element, total: Element)
+        case buffers(_ buffers: [ByteBuffer])
+    }
+    
+    init(_ contents: Contents) {
+        if case let .chunk(chunk, total: _) = contents {
+            guard chunk > 0 else {
+                preconditionFailure("chunk 大小不能为零或小于零，得到 \(chunk)")
+            }
+        }
+        self.contents = contents
+    }
+    
+    init(arrayLiteral elements: Int64...) {
+        self.contents = .array(elements)
+    }
+    
+    let startIndex: Int = 0
+    
+    var endIndex: Int {
+        switch contents {
+        case .array(let buffers): return buffers.endIndex
+        case .buffers(let buffers): return buffers.endIndex
+        case .chunk(let chunkSize, total: let total):
+            if total % chunkSize == 0 {
+                return Int(total / chunkSize)
+            } else {
+                return Int(total / chunkSize) + 1
+            }
+        }
+    }
+    
+    var last: Int64? {
+        switch contents {
+        case .array(let buffers): return buffers.last
+        case .buffers(let buffers): return buffers.last != nil ? Int64(buffers.last!.readableBytes) : nil
+        case .chunk(let chunkSize, total: let total):
+            guard total > 0 else { return nil }
+            if total % chunkSize == 0 {
+                return chunkSize
+            } else {
+                return total % chunkSize
+            }
+        }
+    }
+    
+    func index(after i: Int) -> Int {
+        switch contents {
+        case .array(let buffers): return buffers.index(after: i)
+        case .buffers(let buffers): return buffers.index(after: i)
+        case .chunk: return i + 1
+        }
+    }
+    
+    subscript(position: Int) -> Int64 {
+        switch contents {
+        case .array(let buffers): return buffers[position]
+        case .buffers(let buffers): return Int64(buffers[position].readableBytes)
+        case .chunk(let chunkSize, total: let total):
+            guard position < self.count else { fatalError("Buffer 读取越界，总长度为 \(self.count)，却尝试取得索引 \(position)") }
+            if position == self.count - 1 {
+                let last = total % chunkSize
+                return last == 0 ? chunkSize : last
+            } else {
+                return chunkSize
+            }
+        }
     }
 }

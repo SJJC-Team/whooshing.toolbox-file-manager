@@ -5,7 +5,7 @@ import ErrorHandle
 @Suite("ChunkHelper 落点计算算法测试集")
 struct ChunkHelpeIntersectionrTests {
     
-    static let rangeSet: [(Range<Int64>, [Int64], Int64, Result<ChunkHelpers.IntersectionResult, ChunkHelpers.RangeErrcase>)] = [
+    static let rangeSet: [(Range<Int64>, BufferSpace, Int64, Result<ChunkHelpers.IntersectionResult, ChunkHelpers.RangeErrcase>)] = [
         (
             0..<5,
             [5, 5, 5],
@@ -80,19 +80,19 @@ struct ChunkHelpeIntersectionrTests {
         )
     ]
     
-    static let closedRangeSet: [(ClosedRange<Int64>, [Int64], Int64, Result<ChunkHelpers.IntersectionResult, ChunkHelpers.RangeErrcase>)] = rangeSet.compactMap {
+    static let closedRangeSet: [(ClosedRange<Int64>, BufferSpace, Int64, Result<ChunkHelpers.IntersectionResult, ChunkHelpers.RangeErrcase>)] = rangeSet.compactMap {
         if $0.0.upperBound == $0.0.lowerBound {
             return nil
         }
         return (ClosedRange($0.0), $0.1, $0.2, $0.3)
     }
     
-    static let indexSet: [(Int64, [Int64], Int64, Result<(Int64, Int64), ChunkHelpers.IndexErrcase>)] = rangeSet.compactMap {
+    static let indexSet: [(Int64, BufferSpace, Int64, Result<(Int64, Int, Int64), ChunkHelpers.IndexErrcase>)] = rangeSet.compactMap {
         if $0.0.upperBound == $0.0.lowerBound {
-            let result: Result<(Int64, Int64), ChunkHelpers.IndexErrcase>
+            let result: Result<(Int64, Int, Int64), ChunkHelpers.IndexErrcase>
             switch $0.3 {
             case .success(let res):
-                result = .success((res.rangeOffset, res.chunkBegin))
+                result = .success((res.rangeOffset, res.chunkIndex, res.chunkBegin))
             case .failure(let error):
                 result = .failure(.intersectionFailed)
             }
@@ -105,7 +105,7 @@ struct ChunkHelpeIntersectionrTests {
     @Test("块大小落点检测函数测试 Range", arguments: rangeSet)
     func rangeIntersectionRangeTest(
         range: Range<Int64>,
-        buffers: [Int64],
+        buffers: BufferSpace,
         offset: Int64,
         expect: Result<ChunkHelpers.IntersectionResult, ChunkHelpers.RangeErrcase>
     ) async throws {
@@ -126,7 +126,7 @@ struct ChunkHelpeIntersectionrTests {
     @Test("块大小落点检测函数测试 ClosedRange", arguments: closedRangeSet)
     func rangeIntersectionClosedRangeTest(
         range: ClosedRange<Int64>,
-        buffers: [Int64],
+        buffers: BufferSpace,
         offset: Int64,
         expect: Result<ChunkHelpers.IntersectionResult, ChunkHelpers.RangeErrcase>
     ) async throws {
@@ -147,9 +147,9 @@ struct ChunkHelpeIntersectionrTests {
     @Test("块大小落点检测函数测试 Indexes", arguments: indexSet)
     func rangeIntersectionClosedRangeTest(
         index: Int64,
-        buffers: [Int64],
+        buffers: BufferSpace,
         offset: Int64,
-        expect: Result<(Int64, Int64), ChunkHelpers.IndexErrcase>
+        expect: Result<(Int64, Int, Int64), ChunkHelpers.IndexErrcase>
     ) async throws {
         switch expect {
         case .success(let expect):
