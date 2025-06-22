@@ -114,20 +114,14 @@ extension __FileReader {
     }
 }
 
-fileprivate extension AsyncThrowingChannel where Failure == Error {
-    func castError<NewError: Error>(to _: NewError.Type) -> AsyncThrowingChannel<Element, NewError> {
-        unsafeBitCast(self, to: AsyncThrowingChannel<Element, NewError>.self)
-    }
-}
-
 extension File {
     struct Reader: __FileReader, @unchecked Sendable {
-        var fileIndex: FileIndex
-        var fileCrypto: FileCrypto
-        var key: Crypto.Symm.Key
+        let fileIndex: FileIndex
+        let fileCrypto: FileCrypto
+        let key: Crypto.Symm.Key
         
-        var lock = NIOLock()
-        var __fileHandler: any FileHandleProtocol
+        let lock = NIOLock()
+        let __fileHandler: any FileHandleProtocol
         
         init(
             fileIndex: FileIndex,

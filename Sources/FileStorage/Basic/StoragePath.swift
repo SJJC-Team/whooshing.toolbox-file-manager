@@ -61,7 +61,9 @@ extension StoragePath: Equatable {
     }
     
     public static func + (lhs: StoragePath, rhs: String) -> StoragePath { lhs.add(rhs) }
+    public static func + (lhs: String, rhs: StoragePath) -> StoragePath { rhs + lhs }
     public static func + (lhs: StoragePath, rhs: [String]) -> StoragePath { lhs.add(components: rhs) }
+    public static func + (lhs: [String], rhs: StoragePath) -> StoragePath { rhs + lhs }
     public static func + (lhs: StoragePath, rhs: StoragePath) -> StoragePath { lhs.add(rhs) }
     
     public static func += (lhs: inout StoragePath, rhs: String) { lhs = lhs + rhs }

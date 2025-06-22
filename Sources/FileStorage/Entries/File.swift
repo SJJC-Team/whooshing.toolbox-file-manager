@@ -67,13 +67,14 @@ public extension File {
     func openForWrite() async throws(BscError<Errcase>) -> FileWriter {
         let (fileCrypto, key, filePath) = try await makeFileHandleParas()
         let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
-            try await FileSystem.shared.openFile(forWritingAt: filePath, options: .modifyFile(createIfNecessary: false))
+            try await FileSystem.shared.openFile(forReadingAndWritingAt: filePath, options: .modifyFile(createIfNecessary: false))
         }
         return Writer(
             fileIndex: fileIndex,
             fileCrypto: fileCrypto,
             key: key,
-            fileHandler: fileHandler
+            fileHandler: fileHandler,
+            storage: storage
         )
     }
     
@@ -86,7 +87,8 @@ public extension File {
             fileIndex: fileIndex,
             fileCrypto: fileCrypto,
             key: key,
-            fileHandler: fileHandler
+            fileHandler: fileHandler,
+            storage: storage
         )
     }
 }

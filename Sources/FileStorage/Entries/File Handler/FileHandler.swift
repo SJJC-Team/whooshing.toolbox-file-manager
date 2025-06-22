@@ -1,4 +1,5 @@
 import NIOFileSystem
+import AsyncAlgorithms
 import Cryptos
 import NIOConcurrencyHelpers
 
@@ -24,5 +25,11 @@ extension __FileContentHandler {
     
     func close() async throws {
         try await fileHandler.close()
+    }
+}
+
+extension AsyncThrowingChannel where Failure == Error {
+    func castError<NewError: Error>(to _: NewError.Type) -> AsyncThrowingChannel<Element, NewError> {
+        unsafeBitCast(self, to: AsyncThrowingChannel<Element, NewError>.self)
     }
 }

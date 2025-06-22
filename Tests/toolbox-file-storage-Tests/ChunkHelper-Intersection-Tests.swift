@@ -87,12 +87,12 @@ struct ChunkHelpeIntersectionrTests {
         return (ClosedRange($0.0), $0.1, $0.2, $0.3)
     }
     
-    static let indexSet: [(Int64, BufferSpace, Int64, Result<(Int64, Int, Int64), ChunkHelpers.IndexErrcase>)] = rangeSet.compactMap {
+    static let indexSet: [(Int64, BufferSpace, Int64, Result<ChunkHelpers.IntersectionResult, ChunkHelpers.IndexErrcase>)] = rangeSet.compactMap {
         if $0.0.upperBound == $0.0.lowerBound {
-            let result: Result<(Int64, Int, Int64), ChunkHelpers.IndexErrcase>
+            let result: Result<ChunkHelpers.IntersectionResult, ChunkHelpers.IndexErrcase>
             switch $0.3 {
             case .success(let res):
-                result = .success((res.rangeOffset, res.chunkIndex, res.chunkBegin))
+                result = .success(res)
             case .failure(let error):
                 result = .failure(.intersectionFailed)
             }
@@ -149,7 +149,7 @@ struct ChunkHelpeIntersectionrTests {
         index: Int64,
         buffers: BufferSpace,
         offset: Int64,
-        expect: Result<(Int64, Int, Int64), ChunkHelpers.IndexErrcase>
+        expect: Result<ChunkHelpers.IntersectionResult, ChunkHelpers.IndexErrcase>
     ) async throws {
         switch expect {
         case .success(let expect):

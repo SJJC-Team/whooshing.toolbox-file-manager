@@ -27,9 +27,10 @@ extension ChunkHelpers {
         let chunkIndex: Int
         let chunkBegin: Int64
         let chunks: [Int64]
+        let chunkTotalLength: Int64
         
         var description: String {
-            "(rangeOffset: \(rangeOffset), chunkIndex: \(chunkIndex), chunkBegin: \(chunkBegin), chunks: [\(chunks.map { String($0) }.joined(separator: ", "))])"
+            "(rangeOffset: \(rangeOffset), chunkIndex: \(chunkIndex), chunkBegin: \(chunkBegin), chunkTotalLength: \(chunkTotalLength), chunks: [\(chunks.map { String($0) }.joined(separator: ", "))])"
         }
     }
     
@@ -47,42 +48,47 @@ extension ChunkHelpers {
     ///     - **`chunkIndex`**: chunks 的起始索引
     ///     - **`chunkBegin`**: chunks 的起始字节位
     ///     - **`chunks`**: 需要处理的 chunks
+    ///     - **`chunkTotalLength`**: chunks 的总大小
     ///
     /// -----------
     /// ### 输入参数:
     /// ```
-    ///               [-------------------------]                           : range
-    /// [----   |--------   |----   |------   |----   |------   |---   ]    : chunks
-    /// [-------|-----------|-------|---------|-------|---------|------]
+    ///               [-------------------------]                           : range(without offset)
+    /// [----   |--------   |----   |------   |----   |------   |---   ]
+    /// [-------|-----------|-------|---------|-------|---------|------]    : chunks
     ///      |  |        |  |    |  |      |  |    |  |      |  |   |  |
     ///      <-->        <-->    <-->      <-->    <-->      <-->   <-->    : offset
     /// ```
     ///
     /// ### 返回参数:
     /// ```
-    ///               [-------------------------]                           : range
-    /// [----   |--------   |----   |------   |----   |------   |---   ]    : chunks
-    /// [-------|-----------|-------|---------|-------|---------|------]
+    ///               [-------------------------]                           : range(without offset)
+    /// [----   |--------   |----   |------   |----   |------   |---   ]
+    /// [-------|-----------|-------|---------|-------|---------|------]    : chunks
     /// |       |     |                               |
     /// |       <----->                               |                     : rangeOffset
     /// <------->                                     |                     : chunkIndex(Index)
     /// <------->                                     |                     : chunkBegin
     ///         <------------------------------------->                     : chunks
+    ///         <------------------------------------->                     : chunkTotalLength
     /// ```
     ///
     static func rangeIntersection(_ range: Range<Int64>, in chunks: BufferSpace, offset: Int64) throws(BscError<RangeErrcase>) -> IntersectionResult {
         
         guard chunks.count > 0 || range.lowerBound > 0 else {
-            return .init(rangeOffset: 0, chunkIndex: 0, chunkBegin: 0, chunks: [])
+            return .init(rangeOffset: 0, chunkIndex: 0, chunkBegin: 0, chunks: [], chunkTotalLength: 0)
         }
         
         var res: [Int64] = []
         var record = false
-        var curChunkIndex = Int64(0)
-        var rangeBegin = Int64(-1)
-        var chunkBegin = Int64(-1)
+        var curChunkIndex: Int64 = 0
+        var rangeBegin: Int64 = -1
+        var chunkBegin: Int64 = -1
         var chunkIndex = -1
+        var chunkTotalLength: Int64 = 0
         for (i, chunk) in chunks.enumerated() {
+            chunkTotalLength += chunk
+            
             let curChunkRange = curChunkIndex..<(curChunkIndex + chunk)
             
             if curChunkRange.contains(range.lowerBound) {
@@ -110,7 +116,7 @@ extension ChunkHelpers {
         guard record == false else { throw .init(.rangeSizeExceed, "预期的结束边界为 \(chunks.reduce(0, +))，却得到 \(range.upperBound)") }
         guard rangeBegin != -1 else { throw .init(.rangeBeginIndexNotFound, "预期的最大起始边界为 \(chunks.reduce(0, +))，却得到 \(range.lowerBound)") }
         
-        return .init(rangeOffset: rangeBegin, chunkIndex: chunkIndex, chunkBegin: chunkBegin, chunks: res)
+        return .init(rangeOffset: rangeBegin, chunkIndex: chunkIndex, chunkBegin: chunkBegin, chunks: res, chunkTotalLength: chunkTotalLength)
     }
     
     /// 数据落点分析算法
@@ -119,17 +125,19 @@ extension ChunkHelpers {
     }
     
     /// 从数据块寻址算法
-    static func index(_ index: Int64, in buffer: BufferSpace, offset: Int64) throws(BscError<IndexErrcase>) -> (rangeOffset: Int64, chunkIndex: Int, chunkBegin: Int64) {
+    static func index(_ index: Int64, in buffer: BufferSpace, offset: Int64) throws(BscError<IndexErrcase>) -> IntersectionResult {
         let intersection = try required(throws: BscError<IndexErrcase>(.intersectionFailed)) {
             try rangeIntersection(index..<index, in: buffer, offset: offset)
         }
-        return (intersection.rangeOffset, intersection.chunkIndex, intersection.chunkBegin)
+        return intersection
     }
 }
 
 extension ChunkHelpers {
     
     static var minChunkSize: Int64 { 8192 }
+    
+    static var commonChunkSize: Int64 { 65535 }
     
     struct ReseparationResult: Sendable, Equatable, CustomStringConvertible {
         
@@ -148,17 +156,35 @@ extension ChunkHelpers {
         }
         
         enum TailCombine: Equatable, CustomStringConvertible {
+            
+            struct TailParas: Equatable, CustomStringConvertible {
+                let length: Int64
+                let chunkIndex: Int
+                let chunkBegin: Int64
+                let byteOffset: Int64
+                
+                var description: String {
+                    "tailLength: \(length), tailChunkIndex: \(chunkIndex), tailChunkBegin: \(chunkBegin), tailByteIndex: \(byteOffset)"
+                }
+            }
+            
             case none
-            case separate(tailLength: Int64, chunkIndex: Int, byteIndex: Int64)
-            case combine(tailLength: Int64, chunkIndex: Int, byteIndex: Int64)
+            case separate(_ tailPara: TailParas)
+            case combine(_ tailPara: TailParas)
+            
+            var tail: TailParas? {
+                switch self {
+                case .none: return nil
+                case .separate(let tail): return tail
+                case .combine(let tail): return tail
+                }
+            }
             
             var description: String {
                 switch self {
                 case .none: return "none"
-                case .separate(tailLength: let length, let chunkIndex, let byteIndex):
-                    return "separate(tailLength: \(length), chunkIndex: \(chunkIndex), byteIndex: \(byteIndex))"
-                case .combine(tailLength: let length, let chunkIndex, let byteIndex):
-                    return "combine(tailLength: \(length), chunkIndex: \(chunkIndex), byteIndex: \(byteIndex))"
+                case .separate(let tail): return "separate(\(tail))"
+                case .combine(let tail): return "combine(\(tail))"
                 }
             }
         }
@@ -177,7 +203,56 @@ extension ChunkHelpers {
     }
     
     /// 数据重分割算法-覆写
-    static func replacementReseparation(_ chunks: BufferSpace, at begin: Int64, in originChunks: BufferSpace) throws(BscError<RangeErrcase>) -> ReseparationResult {
+    ///
+    /// 重新划分加密 chunk 大小
+    ///
+    /// - Parameters:
+    ///     - chunks: 表示要新插入的数据大小
+    ///     - begin:
+    ///     - originChunks: 原数据的所有 chunk 大小
+    ///     - offset: 块大小的偏移量，即 `offsetChunks = [chunks].map { $0 + offset }`
+    ///
+    /// - Returns:
+    ///     - **`headerCombine`**:
+    ///         - **`.none`**: 数据头不存在
+    ///         - **`.separate`**: 数据头应当单独作为第一块
+    ///         - **`.combine`**: 数据头应当与第一块新数据合并
+    ///     - **`tailCombine`**:
+    ///         - **`.none`**: 数据尾不存在
+    ///         - **`.separate`**: 数据尾应当单独作为最后一块
+    ///         - **`.combine`**: 数据尾应当与第一块新数据合并
+    ///     - **`tailParas`**:
+    ///         - **`length`**: 数据尾的长度
+    ///         - **`chunkIndex`**: 数据尾所在的 originChunks 的数组索引值
+    ///         - **`chunkBegin`**: 数据尾所在的 originChunks 的起始字节索引值
+    ///         - **`byteOffset`**: 数据尾在其 chunk 上的偏移量
+    ///
+    /// -----------
+    /// ### 输入参数:
+    /// ```
+    ///       [---------|------|-------------]                  : chunks
+    /// [-------   |------------   |-------------------   ]
+    /// [----------|---------------|----------------------]     : originChunks
+    /// |     | |  |            |  |                   |  |
+    /// |     | <-->            <-->                   <-->     : offset
+    /// <----->                                                 : begin
+    ///
+    /// ```
+    ///
+    /// -----------
+    /// ### 返回参数:
+    /// ```
+    ///       [---------|------|-------------]                  : chunks
+    /// [-------   |------------   |-------------------   ]     : originChunks
+    /// [----------|---------------|----------------------]
+    /// |                          |         |        |
+    /// |                          |         <-------->         : tail.length
+    /// <-------------------------->         |                  : tail.chunkIndex(Index)
+    /// <-------------------------->         |                  : tail.chunkBegin
+    ///                            <--------->                  : tail.byteOffset
+    ///
+    /// ```
+    static func replacementReseparation(_ chunks: BufferSpace, at begin: Int64, in originChunks: BufferSpace, offset: Int64) throws(BscError<RangeErrcase>) -> ReseparationResult {
         guard begin >= 0 else {
             throw .init(.rangeSizeInvalid, "起始索引值无效，预期 >= 0，但得到 \(begin)")
         }
@@ -186,84 +261,144 @@ extension ChunkHelpers {
             return .init(headCombine: .none, tailCombine: .none)
         }
         
-        guard chunks.first == nil || begin <= chunks.first!, begin >= 0 else {
-            throw .init(.rangeBeginIndexNotFound, "预期的最大起始边界为 0..<\(chunks.first!)，却得到 \(begin)")
+        guard originChunks.first == nil || begin <= (originChunks.first! - offset), begin >= 0 else {
+            throw .init(.rangeBeginIndexNotFound, "预期的最大起始边界为 0..<\(originChunks.first! - offset)，却得到 \(begin)")
         }
         
         var stackedLength = begin
         var stackIndex = 0
-        var tailParas: (size: Int64, chunkIndex: Int, byteIndex: Int64) = (-1, -1, -1)
-        for (i, originChunk) in originChunks.enumerated() {
-            
-            if i == originChunks.count - 1 {
-                if stackIndex == chunks.count {
-                    tailParas = (originChunk - stackedLength, i, stackedLength)
-                }
-                break
-            }
-            
+        var tailParas = ReseparationResult.TailCombine.TailParas(length: -1, chunkIndex: -1, chunkBegin: -1, byteOffset: -1)
+        var curOriginChunkLength: Int64 = 0
+        for (i, oc) in originChunks.enumerated() {
+            let originChunk = oc - offset
             var curOriginChunk = originChunk
+            var curStack = stackedLength
             while stackedLength <= curOriginChunk {
                 curOriginChunk -= stackedLength
                 
                 guard stackIndex < chunks.count else {
-                    throw .init(.rangeSizeTooSmall)
+                    if i == originChunks.count - 1 {
+                        break
+                    } else {
+                        throw .init(.rangeSizeTooSmall)
+                    }
                 }
                 
                 stackedLength = chunks[stackIndex]
+                curStack += stackedLength
                 stackIndex += 1
             }
             
+            if i == originChunks.count - 1 {
+                if stackIndex == chunks.count {
+                    tailParas = ReseparationResult.TailCombine.TailParas(
+                        length: originChunk - curStack,
+                        chunkIndex: i,
+                        chunkBegin: curOriginChunkLength + Int64(i) * offset,
+                        byteOffset: curStack
+                    )
+                }
+                break
+            }
+            
             stackedLength -= curOriginChunk
+            curOriginChunkLength += originChunk
         }
         
         var headCombine: ReseparationResult.HeadCombine = .none
         var tailCombine: ReseparationResult.TailCombine = .none
         
         if begin > 0 {
-            headCombine = (chunks.first != nil && shouldMerge(chunks.first!, chunk2: begin)) ? .combine : .separate
+            headCombine = (chunks.first != nil && shouldMerge(chunks.first! + offset, chunk2: begin)) ? .combine : .separate
         }
         
-        if tailParas.size > 0 {
-            if chunks.last != nil && shouldMerge(chunks.last!, chunk2: tailParas.size) {
-                tailCombine = .combine(tailLength: tailParas.size, chunkIndex: tailParas.chunkIndex, byteIndex: tailParas.byteIndex)
+        if tailParas.length > 0 {
+            if chunks.last != nil && shouldMerge(chunks.last! + offset, chunk2: tailParas.length) {
+                tailCombine = .combine(tailParas)
             } else {
-                tailCombine = .separate(tailLength: tailParas.size, chunkIndex: tailParas.chunkIndex, byteIndex: tailParas.byteIndex)
+                tailCombine = .separate(tailParas)
             }
         }
         
         return .init(headCombine: headCombine, tailCombine: tailCombine)
     }
     
-    /// 数据重分割算法-插入
-    static func insertionReseparation(_ chunks: BufferSpace, at begin: Int64, in chunk: Int64) throws(BscError<RangeErrcase>) -> ReseparationResult {
+    /// 数据重分割算法-覆写
+    ///
+    /// 重新划分加密 chunk 大小
+    ///
+    /// - Parameters:
+    ///     - chunks: 表示要新插入的数据大小
+    ///     - begin:
+    ///     - originChunk: 原数据的 chunk 大小
+    ///     - offset: 块大小的偏移量，即 `offsetChunks = [chunks].map { $0 + offset }`
+    ///
+    /// - Returns:
+    ///     - **`headerCombine`**:
+    ///         - **`.none`**: 数据头不存在
+    ///         - **`.separate`**: 数据头应当单独作为第一块
+    ///         - **`.combine`**: 数据头应当与第一块新数据合并
+    ///     - **`tailCombine`**:
+    ///         - **`.none`**: 数据尾不存在
+    ///         - **`.separate`**: 数据尾应当单独作为最后一块
+    ///         - **`.combine`**: 数据尾应当与第一块新数据合并
+    ///     - **`tailParas`**:
+    ///         - **`length`**: 数据尾的长度
+    ///         - **`chunkIndex`**: 数据尾所在的 originChunks 的数组索引值，一定为 0
+    ///         - **`chunkBegin`**: 数据尾所在的 originChunks 的起始字节索引值，一定为 0
+    ///         - **`byteOffset`**: 数据尾在其 chunk 上的偏移量
+    ///
+    /// -----------
+    /// ### 输入参数:
+    /// ```
+    ///       [---------|------|-------------]                  : chunks(without offset)
+    /// [----------------------------------------------   ]
+    /// [-------------------------------------------------]     : originChunk
+    /// |     |                                        |  |
+    /// |     |                                        <-->     : offset
+    /// <----->                                                 : begin
+    ///
+    /// ```
+    ///
+    /// -----------
+    /// ### 返回参数:
+    /// ```
+    ///       [---------|------|-------------]                  : chunks(without offset)
+    /// [----------------------------------------------   ]     : originChunk
+    /// [-------------------------------------------------]
+    /// |     |                                       |
+    /// |     <--------------------------------------->         : tail.length
+    /// <----->                                                 : tail.byteOffset
+    ///
+    /// ```
+    static func insertionReseparation(_ chunks: BufferSpace, at begin: Int64, in originChunk: Int64, offset: Int64) throws(BscError<RangeErrcase>) -> ReseparationResult {
         
-        guard begin >= 0, chunk >= 0 else {
-            throw .init(.rangeSizeInvalid, "输入参数无效，预期 >= 0，但得到 \(begin) 与 \(chunk)")
+        guard begin >= 0, originChunk >= 0 else {
+            throw .init(.rangeSizeInvalid, "输入参数无效，预期 >= 0，但得到 \(begin) 与 \(originChunk)")
         }
         
-        guard chunk > 0 || begin > 0 else {
+        guard originChunk > 0 || begin > 0 else {
             return .init(headCombine: .none, tailCombine: .none)
         }
         
-        guard begin <= chunk, begin >= 0 else {
-            throw .init(.rangeBeginIndexNotFound, "预期的最大起始边界为 0..<\(chunk)，却得到 \(begin)")
+        guard begin <= (originChunk - offset), begin >= 0 else {
+            throw .init(.rangeBeginIndexNotFound, "预期的最大起始边界为 0..<\(originChunk - offset)，却得到 \(begin)")
         }
         
-        let tailSize = chunk - begin
+        let tailSize = originChunk - offset - begin
         
         var headCombine: ReseparationResult.HeadCombine = .none
         var tailCombine: ReseparationResult.TailCombine = .none
         
         if begin > 0 {
-            headCombine = (chunks.first != nil && shouldMerge(chunks.first!, chunk2: begin)) ? .combine : .separate
+            headCombine = (chunks.first != nil && shouldMerge(chunks.first! + offset, chunk2: begin)) ? .combine : .separate
         }
         
         if tailSize > 0 {
-            if chunks.last != nil && shouldMerge(chunks.last!, chunk2: tailSize) {
-                tailCombine = .combine(tailLength: tailSize, chunkIndex: 0, byteIndex: begin)
+            if chunks.last != nil && shouldMerge(chunks.last! + offset, chunk2: tailSize) {
+                tailCombine = .combine(.init(length: tailSize, chunkIndex: 0, chunkBegin: 0, byteOffset: begin))
             } else {
-                tailCombine = .separate(tailLength: tailSize, chunkIndex: 0, byteIndex: begin)
+                tailCombine = .separate(.init(length: tailSize, chunkIndex: 0, chunkBegin: 0, byteOffset: begin))
             }
         }
         
