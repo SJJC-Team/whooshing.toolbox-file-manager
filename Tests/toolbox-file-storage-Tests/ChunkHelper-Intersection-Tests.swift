@@ -13,8 +13,20 @@ struct ChunkHelpeIntersectionrTests {
             .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, chunkIndex: 0, chunkBegin: 0, chunks: [7]))
         ),
         (
+            0..<5,
+            .init(.chunk(5, total: 15)),
+            2,
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, chunkIndex: 0, chunkBegin: 0, chunks: [7]))
+        ),
+        (
             5..<5,
             [5, 5, 5],
+            2,
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, chunkIndex: 1, chunkBegin: 7, chunks: []))
+        ),
+        (
+            5..<5,
+            .init(.chunk(5, total: 15)),
             2,
             .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, chunkIndex: 1, chunkBegin: 7, chunks: []))
         ),

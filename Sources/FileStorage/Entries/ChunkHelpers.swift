@@ -26,11 +26,10 @@ extension ChunkHelpers {
         let rangeOffset: Int64
         let chunkIndex: Int
         let chunkBegin: Int64
-        let chunks: [Int64]
-        let chunkTotalLength: Int64
+        let chunks: BufferSpace
         
         var description: String {
-            "(rangeOffset: \(rangeOffset), chunkIndex: \(chunkIndex), chunkBegin: \(chunkBegin), chunkTotalLength: \(chunkTotalLength), chunks: [\(chunks.map { String($0) }.joined(separator: ", "))])"
+            "(rangeOffset: \(rangeOffset), chunkIndex: \(chunkIndex), chunkBegin: \(chunkBegin), chunks: [\(chunks.map { String($0) }.joined(separator: ", "))])"
         }
     }
     
@@ -54,8 +53,8 @@ extension ChunkHelpers {
     /// ### 输入参数:
     /// ```
     ///               [-------------------------]                           : range(without offset)
-    /// [----   |--------   |----   |------   |----   |------   |---   ]
-    /// [-------|-----------|-------|---------|-------|---------|------]    : chunks
+    /// [----   |--------   |----   |------   |----   |------   |---   ]    : chunks
+    /// [-------|-----------|-------|---------|-------|---------|------]
     ///      |  |        |  |    |  |      |  |    |  |      |  |   |  |
     ///      <-->        <-->    <-->      <-->    <-->      <-->   <-->    : offset
     /// ```
@@ -63,20 +62,38 @@ extension ChunkHelpers {
     /// ### 返回参数:
     /// ```
     ///               [-------------------------]                           : range(without offset)
-    /// [----   |--------   |----   |------   |----   |------   |---   ]
-    /// [-------|-----------|-------|---------|-------|---------|------]    : chunks
+    /// [----   |--------   |----   |------   |----   |------   |---   ]    : chunks
+    /// [-------|-----------|-------|---------|-------|---------|------]
     /// |       |     |                               |
     /// |       <----->                               |                     : rangeOffset
     /// <------->                                     |                     : chunkIndex(Index)
     /// <------->                                     |                     : chunkBegin
     ///         <------------------------------------->                     : chunks
-    ///         <------------------------------------->                     : chunkTotalLength
     /// ```
     ///
     static func rangeIntersection(_ range: Range<Int64>, in chunks: BufferSpace, offset: Int64) throws(BscError<RangeErrcase>) -> IntersectionResult {
         
         guard chunks.count > 0 || range.lowerBound > 0 else {
-            return .init(rangeOffset: 0, chunkIndex: 0, chunkBegin: 0, chunks: [], chunkTotalLength: 0)
+            return .init(rangeOffset: 0, chunkIndex: 0, chunkBegin: 0, chunks: [])
+        }
+        
+        if let (chunkSize, total) = chunks.unifiedChunk {
+            guard total >= range.lowerBound, 0 <= range.lowerBound else { throw .init(.rangeBeginIndexNotFound, "预期的最大起始边界为 \(total)，却得到 \(range.lowerBound)") }
+            guard total >= range.upperBound, 0 <= range.upperBound else { throw .init(.rangeSizeExceed, "预期的结束边界为 \(total)，却得到 \(range.upperBound)") }
+            
+            let chunkIndex = Int(range.lowerBound / chunkSize)
+            let prefixChunkSize = chunks.sum(in: 0..<chunkIndex)
+            let rangeOffset = range.lowerBound - prefixChunkSize
+            let chunkBegin = prefixChunkSize + Int64(chunkIndex) * offset
+            
+            guard !range.isEmpty else {
+                return .init(rangeOffset: rangeOffset, chunkIndex: chunkIndex, chunkBegin: chunkBegin, chunks: [])
+            }
+            
+            let chunkEndIndex = Int((range.upperBound - 1) / chunkSize)
+            let chunkTotalLength = chunks.sum(in: chunkIndex...chunkEndIndex) + Int64(chunkEndIndex - chunkIndex + 1) * offset
+            
+            return .init(rangeOffset: rangeOffset, chunkIndex: chunkIndex, chunkBegin: chunkBegin, chunks: .init(.chunk(chunkSize + offset, total: chunkTotalLength)))
         }
         
         var res: [Int64] = []
@@ -85,9 +102,7 @@ extension ChunkHelpers {
         var rangeBegin: Int64 = -1
         var chunkBegin: Int64 = -1
         var chunkIndex = -1
-        var chunkTotalLength: Int64 = 0
         for (i, chunk) in chunks.enumerated() {
-            chunkTotalLength += chunk
             
             let curChunkRange = curChunkIndex..<(curChunkIndex + chunk)
             
@@ -116,7 +131,7 @@ extension ChunkHelpers {
         guard record == false else { throw .init(.rangeSizeExceed, "预期的结束边界为 \(chunks.reduce(0, +))，却得到 \(range.upperBound)") }
         guard rangeBegin != -1 else { throw .init(.rangeBeginIndexNotFound, "预期的最大起始边界为 \(chunks.reduce(0, +))，却得到 \(range.lowerBound)") }
         
-        return .init(rangeOffset: rangeBegin, chunkIndex: chunkIndex, chunkBegin: chunkBegin, chunks: res, chunkTotalLength: chunkTotalLength)
+        return .init(rangeOffset: rangeBegin, chunkIndex: chunkIndex, chunkBegin: chunkBegin, chunks: .init(.array(res)))
     }
     
     /// 数据落点分析算法
@@ -406,7 +421,7 @@ extension ChunkHelpers {
     }
 }
 
-struct BufferSpace: Collection, ExpressibleByArrayLiteral {
+struct BufferSpace: ExpressibleByArrayLiteral {
     
     typealias ArrayLiteralElement = Int64
     typealias Index = Int
@@ -414,7 +429,7 @@ struct BufferSpace: Collection, ExpressibleByArrayLiteral {
     
     private var contents: Contents
     
-    enum Contents {
+    enum Contents: Equatable {
         case array(_ array: [Element])
         case chunk(_ chunkSize: Element, total: Element)
         case buffers(_ buffers: [ByteBuffer])
@@ -432,8 +447,75 @@ struct BufferSpace: Collection, ExpressibleByArrayLiteral {
     init(arrayLiteral elements: Int64...) {
         self.contents = .array(elements)
     }
+}
+
+extension BufferSpace: Equatable {
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        for (i, buffer) in lhs.enumerated() {
+            guard rhs[i] == buffer else { return false }
+        }
+        return true
+    }
+}
+
+extension BufferSpace {
+    var unifiedChunk: (size: Int64, total: Int64)? {
+        switch contents {
+        case .array(let buffers):
+            return getSum(buffers) { $0 }
+        case .buffers(let buffers):
+            return getSum(buffers) { Int64($0.readableBytes) }
+        case .chunk(let chunkSize, total: let total):
+            return (chunkSize, total)
+        }
+        
+        func getSum<T>(_ array: [T], getByte: (T) -> Int64) -> (size: Int64, total: Int64)? {
+            guard let first = array.first else { return nil }
+            var total: Int64 = 0
+            let last = getByte(first)
+            for (i, buffer) in array.enumerated() {
+                if i != (array.count - 1) && last != getByte(buffer) { return nil }
+                total += getByte(buffer)
+            }
+            return (size: last, total: total)
+        }
+    }
     
-    let startIndex: Int = 0
+    func sum(in range: ClosedRange<Int>) -> Int64 {
+        precondition(range.lowerBound >= 0, "指定的数组 sum 起始边界无效")
+        precondition(range.upperBound < self.count, "指定的数组 sum 结束边界无效，预期在范围 \"\(range.lowerBound)..<\(self.count)\"，却得到 \(range.upperBound)")
+        return sum(in: Range<Int>(range))
+    }
+    
+    func sum(in range: Range<Int>) -> Int64 {
+        precondition(range.lowerBound >= 0, "指定的数组 sum 起始边界无效")
+        precondition(range.upperBound <= self.count, "指定的数组 sum 结束边界无效，预期在范围 \"\(range.lowerBound)...\(self.count)\"，却得到 \(range.upperBound)")
+        
+        switch contents {
+        case .array(let buffers):
+            var result: Int64 = 0
+            for i in range {
+                result += buffers[i]
+            }
+            return result
+        case .buffers(let buffers):
+            var result: Int64 = 0
+            for i in range {
+                result += Int64(buffers[i].readableBytes)
+            }
+            return result
+        case .chunk(let chunkSize, total: _):
+            if range.upperBound == self.count {
+                return Int64(range.count - 1) * chunkSize + (self.last ?? 0)
+            } else {
+                return Int64(range.count) * chunkSize
+            }
+        }
+    }
+}
+
+extension BufferSpace: Collection {
+    var startIndex: Int { 0 }
     
     var endIndex: Int {
         switch contents {

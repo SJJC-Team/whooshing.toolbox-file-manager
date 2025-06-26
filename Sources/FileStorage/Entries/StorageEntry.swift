@@ -9,14 +9,14 @@ public protocol StorageEntry: Sendable {
     var createdAt: Date { get }
     var updatedAt: Date { get }
     
-    func delete(force: Bool) -> EventLoopResult<Void, BscError<FileStorage.Errcase>>
-    func rename(as name: String) -> EventLoopResult<Self, BscError<FileStorage.Errcase>>
-    func move(to path: StoragePath, as name: String?) -> EventLoopResult<Self, BscError<FileStorage.Errcase>>
-    func move(to dir: Directory, as name: String?) -> EventLoopResult<Self, BscError<FileStorage.Errcase>>
+    func delete(force: Bool) -> EventLoopRes<Void, FileStorage.Errcase>
+    func rename(as name: String) -> EventLoopRes<Self, FileStorage.Errcase>
+    func move(to path: StoragePath, as name: String?) -> EventLoopRes<Self, FileStorage.Errcase>
+    func move(to dir: Directory, as name: String?) -> EventLoopRes<Self, FileStorage.Errcase>
 }
 
 public extension StorageEntry {
-    func move(to path: StoragePath, as name: String?) -> EventLoopResult<Self,  BscError<FileStorage.Errcase>> {
+    func move(to path: StoragePath, as name: String?) -> EventLoopRes<Self, FileStorage.Errcase> {
         storage.getDirectory(at: path).flatMap { dir in
             move(to: dir, as: name)
         }

@@ -17,11 +17,14 @@ public final class FileStorage: @unchecked Sendable {
     
     public let eventLoop: EventLoop
     public let logger: Logger
+    public let chunkSize: Int64
     
     let storagePath: String
+    let walPath: String
     let indexDatabase: Database
     let masterKey: Crypto.Symm.Key
     let rootInfo: RootInfo
+    var db: Database { indexDatabase }
     
     public lazy private(set) var rootDir: Directory = {
         try! .init(from: rootDirIndex, parent: nil, storage: self)
@@ -38,13 +41,34 @@ public final class FileStorage: @unchecked Sendable {
         return index
     }()
     
-    var db: Database { indexDatabase }
     private let dbs: Databases
     
-    public init(
+    public static func new(
         eventLoop: EventLoop,
         storagePath: String,
         indexDatabaseConfigure: SQLPostgresConfiguration,
+        chunkSize: Int64,
+        masterKey: Crypto.Symm.Key,
+        logger: Logger,
+        debuging: Debuging? = nil
+    ) async -> Res<FileStorage, Errcase> {
+        await .async {
+            try await FileStorage(
+                eventLoop: eventLoop,
+                storagePath: storagePath,
+                indexDatabaseConfigure: indexDatabaseConfigure,
+                chunkSize: chunkSize,
+                masterKey: masterKey,
+                logger: logger
+            )
+        }
+    }
+    
+    init(
+        eventLoop: EventLoop,
+        storagePath: String,
+        indexDatabaseConfigure: SQLPostgresConfiguration,
+        chunkSize: Int64,
         masterKey: Crypto.Symm.Key,
         logger: Logger,
         debuging: Debuging? = nil
@@ -62,10 +86,17 @@ public final class FileStorage: @unchecked Sendable {
             throw Errcase.fileSystemInitFailed.d("根目录参数读取失败")
         }
         
+        let walPath = "\(storagePath)/wal"
+        try required(throws: Errcase.fileSystemInitFailed, "wal 目录创建失败") {
+            try FileManager.default.createDirectory(at: .init(filePath: walPath), withIntermediateDirectories: true)
+        }
+        
         self.rootInfo = .init(createDate: createDate, modifyDate: modifyDate)
         self.eventLoop = eventLoop
         self.storagePath = storagePath
+        self.walPath = walPath
         self.masterKey = masterKey
+        self.chunkSize = chunkSize
         self.logger = logger
         self.dbs = Databases(threadPool: .singleton, on: eventLoop)
         
@@ -73,7 +104,9 @@ public final class FileStorage: @unchecked Sendable {
             self.dbs.use(.postgres(configuration: indexDatabaseConfigure), as: .psql)
             
             let migs = Migrations()
+            migs.add(FileIndex.MIG(tdeEncrypt: debuging?.tdeEncrypt ?? true))
             migs.add(FileCrypto.MIG(tdeEncrypt: debuging?.tdeEncrypt ?? true))
+            migs.add(FilePart.MIG(tdeEncrypt: debuging?.tdeEncrypt ?? true))
             let mig = Migrator(
                 databases: self.dbs,
                 migrations: migs,

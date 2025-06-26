@@ -55,7 +55,7 @@ public extension Directory {
         }
     }
     
-    func subitems() -> EventLoopResult<[any StorageEntry], BscError<Errcase>> {
+    func subitems() -> EventLoopRes<[any StorageEntry], Errcase> {
         FileIndex.query(on: storage.indexDatabase).filter(\.$parent.$id == id).all()
             .withError(Errcase.fetchSubItemFailed, "数据库查询失败")
             .flatMapThrowing
@@ -75,11 +75,11 @@ public extension Directory {
         }
     }
     
-    func empty(force: Bool = false) -> EventLoopResult<Void, BscError<Errcase>> {
+    func empty(force: Bool = false) -> EventLoopRes<Void, Errcase> {
         subitems().wrapped.flatMapEach(on: storage.eventLoop) { $0.delete(force: force).wrapped }.withError()
     }
     
-    func delete(force: Bool = false) -> EventLoopResult<Void, BscError<Errcase>> {
+    func delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
         guard
             !self.isRoot,
             let id = self.id
@@ -92,7 +92,7 @@ public extension Directory {
             .withError(Errcase.deleteDirectoryFailed, "数据库删除记录失败")
     }
     
-    func rename(as name: String) -> EventLoopResult<Directory, BscError<Errcase>> {
+    func rename(as name: String) -> EventLoopRes<Directory, Errcase> {
         guard !self.isRoot else {
             return storage.eventLoop.makeFailedResult(Errcase.renameDirectoryFailed, "不可重命名根目录")
         }
@@ -107,7 +107,7 @@ public extension Directory {
         }
     }
     
-    func move(to dir: Directory, as name: String? = nil) -> EventLoopResult<Directory, BscError<Errcase>> {
+    func move(to dir: Directory, as name: String? = nil) -> EventLoopRes<Directory, Errcase> {
         guard !self.isRoot else {
             return storage.eventLoop.makeFailedResult(Errcase.moveDirectoryFailed, "不可操作根目录")
         }

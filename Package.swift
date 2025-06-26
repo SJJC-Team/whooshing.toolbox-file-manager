@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "whooshing.toolbox-file-storage",
     platforms: [
-        .macOS(.v11),
+        .macOS(.v13),
         .iOS(.v14),
         .watchOS(.v7),
         .tvOS(.v14),

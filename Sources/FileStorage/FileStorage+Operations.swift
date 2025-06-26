@@ -44,7 +44,7 @@ public extension FileStorage {
         at path: StoragePath,
         withIntermediateDirectories createIfNeed: Bool = false,
         slience: Bool = false
-    ) -> EventLoopResult<Directory, BscError<Errcase>> {
+    ) -> EventLoopRes<Directory, Errcase> {
         getParent(at: path, withIntermediateDirectories: createIfNeed)
             .errCast(Errcase.directoryCreateFailed, "获取父目录 \"\(path.parent)\" 失败")
             .flatMap
@@ -73,7 +73,7 @@ public extension FileStorage {
         }
     }
     
-    func getDirectory(at path: StoragePath) -> EventLoopResult<Directory, BscError<Errcase>> {
+    func getDirectory(at path: StoragePath) -> EventLoopRes<Directory, Errcase> {
         get(at: path)
             .errCast(Errcase.directoryGetFailed)
             .flatMapThrowing
@@ -90,7 +90,7 @@ public extension FileStorage {
         at path: StoragePath,
         withIntermediateDirectories createIfNeed: Bool = false,
         slience: Bool = false
-    ) -> EventLoopResult<File, BscError<Errcase>> {
+    ) -> EventLoopRes<File, Errcase> {
         getParent(at: path, withIntermediateDirectories: createIfNeed)
             .errCast(Errcase.fileCreateFailed, "获取父目录 \"\(path.parent)\" 失败")
             .flatMap
@@ -119,7 +119,7 @@ public extension FileStorage {
         }
     }
     
-    func getFile(at path: StoragePath) -> EventLoopResult<File, BscError<Errcase>> {
+    func getFile(at path: StoragePath) -> EventLoopRes<File, Errcase> {
         get(at: path)
             .errCast(Errcase.fileGetFailed)
             .flatMapThrowing
@@ -133,7 +133,7 @@ public extension FileStorage {
 
 extension FileStorage {
     
-    func get(at path: StoragePath) -> EventLoopResult<FileIndex, BscError<FindEntryErrcase>> {
+    func get(at path: StoragePath) -> EventLoopRes<FileIndex, FindEntryErrcase> {
         findEntry(at: path) {
             guard let fileIndex = $0.index else {
                 return self.eventLoop.makeFailedResult(FindEntryErrcase.entryNotExist)
@@ -156,7 +156,7 @@ extension FileStorage {
     func findEntry<ErrorType>(
         at path: StoragePath,
         action: @escaping @Sendable (ActionContext) -> EventLoopResult<FileIndex, ErrorType>
-    ) -> EventLoopResult<FileIndex, BscError<FindEntryErrcase>> {
+    ) -> EventLoopRes<FileIndex, FindEntryErrcase> {
         
         let curPath = StoragePath.root
         var r = self.eventLoop.makeSucceededResult((self.rootDirIndex, curPath), throws: BscError<FindEntryErrcase>.self)
@@ -186,7 +186,7 @@ extension FileStorage {
     func getChild(
         at index: FileIndex,
         name: String
-    ) -> EventLoopResult<FileIndex?, BscError<DatabaseErrcase>> {
+    ) -> EventLoopRes<FileIndex?, DatabaseErrcase> {
         let id: UUID?
         
         do {
@@ -205,7 +205,7 @@ extension FileStorage {
     func getParent(
         at path: StoragePath,
         withIntermediateDirectories createIfNeed: Bool = false
-    ) -> EventLoopResult<FileIndex, BscError<FindEntryErrcase>> {
+    ) -> EventLoopRes<FileIndex, FindEntryErrcase> {
         guard !path.isRoot else { preconditionFailure("不允许创建系统根") }
         if path.parent.isRoot {
             // 在根目录下创建文件夹
@@ -235,7 +235,7 @@ extension FileStorage {
     @Sendable func newDirIndex(
         parent: FileIndex?,
         path: StoragePath
-    ) -> EventLoopResult<FileIndex, BscError<DatabaseErrcase>> {
+    ) -> EventLoopRes<FileIndex, DatabaseErrcase> {
         let new = FileIndex()
         new.id = .init()
         new.parent = parent
@@ -248,7 +248,7 @@ extension FileStorage {
     @Sendable func newFileIndex(
         parent: FileIndex?,
         path: StoragePath
-    ) -> EventLoopResult<FileIndex, BscError<DatabaseErrcase>> {
+    ) -> EventLoopRes<FileIndex, DatabaseErrcase> {
         let file = FileIndex()
         file.id = .init()
         file.name = path.last!
@@ -263,10 +263,10 @@ extension FileStorage {
         
         let fileCrypto = FileCrypto()
         fileCrypto.fileIndex = file
-        fileCrypto.chunks = []
-        fileCrypto.chunkTags = []
-        fileCrypto.encryptedSize = 0
         fileCrypto.salt = saltGenerate()
+        fileCrypto.encryptedSize = 0
+        fileCrypto.lastTag = -1
+        fileCrypto.chunkSize = 65535
         fileCrypto.sharedData = sharedDataGenerate(file: file)
         fileCrypto.storageKey = storageKeyGenerate(file: file)
         
@@ -280,10 +280,10 @@ extension FileStorage {
             var salt = Data()
             let timestamp = UInt64(Date().timeIntervalSince1970)
             // 时间戳
-            salt += timestamp.data()
+            salt += timestamp.data
             // 加一段 16 字节的随机数
             salt += Crypto.randomDataGenerate(length: 16)
-            return .init(data: salt)
+            return .new(data: salt)
         }
         
         func sharedDataGenerate(file: FileIndex) -> String {
@@ -299,7 +299,7 @@ extension FileStorage {
             var key = Data()
             let timestamp = UInt64(Date().timeIntervalSince1970)
             // 时间戳
-            key += timestamp.data()
+            key += timestamp.data
             // 加一段 32 字节的随机数
             key += Crypto.randomDataGenerate(length: 32)
             let hash = SHA256.hash(data: key)

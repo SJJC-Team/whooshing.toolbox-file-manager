@@ -51,45 +51,51 @@ public struct File: StorageEntry, Sendable {
 }
 
 public extension File {
-    func openForRead() async throws(BscError<Errcase>) -> FileReader {
-        let (fileCrypto, key, filePath) = try await makeFileHandleParas()
-        let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
-            try await FileSystem.shared.openFile(forReadingAt: filePath, options: .init())
+    func openForRead() async -> Res<FileReader, Errcase> {
+         await .async { () throws(BscError<Errcase>) in
+            let (fileCrypto, key, filePath) = try await makeFileHandleParas()
+            let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
+                try await FileSystem.shared.openFile(forReadingAt: filePath, options: .init())
+            }
+            return Reader(
+                fileIndex: fileIndex,
+                fileCrypto: fileCrypto,
+                key: key,
+                fileHandler: fileHandler
+            )
         }
-        return Reader(
-            fileIndex: fileIndex,
-            fileCrypto: fileCrypto,
-            key: key,
-            fileHandler: fileHandler
-        )
     }
     
-    func openForWrite() async throws(BscError<Errcase>) -> FileWriter {
-        let (fileCrypto, key, filePath) = try await makeFileHandleParas()
-        let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
-            try await FileSystem.shared.openFile(forReadingAndWritingAt: filePath, options: .modifyFile(createIfNecessary: false))
+    func openForWrite() async -> Res<FileWriter, Errcase> {
+        await .async { () throws(BscError<Errcase>) in
+            let (fileCrypto, key, filePath) = try await makeFileHandleParas()
+            let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
+                try await FileSystem.shared.openFile(forReadingAndWritingAt: filePath, options: .modifyFile(createIfNecessary: false))
+            }
+            return Writer(
+                fileIndex: fileIndex,
+                fileCrypto: fileCrypto,
+                key: key,
+                fileHandler: fileHandler,
+                storage: storage
+            )
         }
-        return Writer(
-            fileIndex: fileIndex,
-            fileCrypto: fileCrypto,
-            key: key,
-            fileHandler: fileHandler,
-            storage: storage
-        )
     }
     
-    func openForReadAndWrite() async throws(BscError<Errcase>) -> FileReaderAndWriter {
-        let (fileCrypto, key, filePath) = try await makeFileHandleParas()
-        let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
-            try await FileSystem.shared.openFile(forReadingAndWritingAt: filePath, options: .modifyFile(createIfNecessary: false))
+    func openForReadAndWrite() async -> Res<FileReaderAndWriter, Errcase> {
+        await .async { () throws(BscError<Errcase>) in
+            let (fileCrypto, key, filePath) = try await makeFileHandleParas()
+            let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
+                try await FileSystem.shared.openFile(forReadingAndWritingAt: filePath, options: .modifyFile(createIfNecessary: false))
+            }
+            return ReaderAndWriter(
+                fileIndex: fileIndex,
+                fileCrypto: fileCrypto,
+                key: key,
+                fileHandler: fileHandler,
+                storage: storage
+            )
         }
-        return ReaderAndWriter(
-            fileIndex: fileIndex,
-            fileCrypto: fileCrypto,
-            key: key,
-            fileHandler: fileHandler,
-            storage: storage
-        )
     }
 }
 
@@ -103,14 +109,14 @@ public extension File {
         (try? await FileIndex.query(on: storage.indexDatabase).filter(\.$id == id).first()) != nil
     }
     
-    func delete(force: Bool = false) -> EventLoopResult<Void, BscError<Errcase>> {
+    func delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
         FileIndex.query(on: storage.indexDatabase)
             .filter(\.$id == id)
             .delete(force: force)
             .withError(Errcase.deleteFileFailed, "数据库删除记录失败")
     }
     
-    func rename(as name: String) -> EventLoopResult<File, BscError<Errcase>> {
+    func rename(as name: String) -> EventLoopRes<File, Errcase> {
         fileIndex.name = name
         return fileIndex.update(on: storage.indexDatabase)
             .withError(Errcase.renameFileFailed, "数据库更新失败")
@@ -122,7 +128,7 @@ public extension File {
         }
     }
     
-    func move(to dir: Directory, as name: String? = nil) -> EventLoopResult<File, BscError<Errcase>> {
+    func move(to dir: Directory, as name: String? = nil) -> EventLoopRes<File, Errcase> {
         fileIndex.parent = dir.fileIndex.isRoot ? nil : dir.fileIndex
         if let name = name {
             fileIndex.name = name
@@ -154,7 +160,7 @@ extension File {
         
         // 创建派生密钥
         let key = try required(throws: Errcase.writeFileFailed, "派生密钥生成失败") {
-            try self.storage.masterKey.derive(fileCrypto.salt, info: fileCrypto.sharedData)
+            try self.storage.masterKey.derive(salt: fileCrypto.salt, info: fileCrypto.sharedData).get()
         }
         
         let filePath = FilePath("\(self.storage.storagePath)/\(fileCrypto.storageKey)/\(FileStorage.CryptoFileExtension)")
