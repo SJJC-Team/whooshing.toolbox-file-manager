@@ -10,37 +10,37 @@ struct ChunkHelpeIntersectionrTests {
             0..<5,
             [5, 5, 5],
             2,
-            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, chunkIndex: 0, chunkBegin: 0, chunks: [7]))
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, rangeInIntersection: false, chunkIndex: 0, chunkBegin: 0, chunks: [7]))
         ),
         (
             0..<5,
             .init(.chunk(5, total: 15)),
             2,
-            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, chunkIndex: 0, chunkBegin: 0, chunks: [7]))
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, rangeInIntersection: false, chunkIndex: 0, chunkBegin: 0, chunks: [7]))
         ),
         (
             5..<5,
             [5, 5, 5],
             2,
-            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, chunkIndex: 1, chunkBegin: 7, chunks: []))
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, rangeInIntersection: true, chunkIndex: 1, chunkBegin: 7, chunks: [7]))
         ),
         (
             5..<5,
             .init(.chunk(5, total: 15)),
             2,
-            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, chunkIndex: 1, chunkBegin: 7, chunks: []))
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, rangeInIntersection: true, chunkIndex: 1, chunkBegin: 7, chunks: [7]))
         ),
         (
             10..<13,
             [5, 3, 5, 8, 6],
             2,
-            .success(ChunkHelpers.IntersectionResult(rangeOffset: 2, chunkIndex: 2, chunkBegin: 12, chunks: [7]))
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 2, rangeInIntersection: false, chunkIndex: 2, chunkBegin: 12, chunks: [7]))
         ),
         (
             10..<14,
             [5, 3, 5, 8, 6],
             2,
-            .success(ChunkHelpers.IntersectionResult(rangeOffset: 2, chunkIndex: 2, chunkBegin: 12, chunks: [7, 10]))
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 2, rangeInIntersection: false, chunkIndex: 2, chunkBegin: 12, chunks: [7, 10]))
         ),
         (
             100..<100,
@@ -52,7 +52,13 @@ struct ChunkHelpeIntersectionrTests {
             11..<11,
             [5, 3, 5, 8, 6],
             2,
-            .success(ChunkHelpers.IntersectionResult(rangeOffset: 3, chunkIndex: 2, chunkBegin: 12, chunks: []))
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 3, rangeInIntersection: false, chunkIndex: 2, chunkBegin: 12, chunks: [7]))
+        ),
+        (
+            13..<13,
+            [5, 3, 5, 8, 6],
+            2,
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, rangeInIntersection: true, chunkIndex: 3, chunkBegin: 19, chunks: [10]))
         ),
         (
             -5..<100,
@@ -76,7 +82,7 @@ struct ChunkHelpeIntersectionrTests {
             8192..<81920,
             [65535, 8192, 21340],
             16,
-            .success(ChunkHelpers.IntersectionResult(rangeOffset: 8192, chunkIndex: 0, chunkBegin: 0, chunks: [65535 + 16, 8192 + 16, 21340 + 16]))
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 8192, rangeInIntersection: false, chunkIndex: 0, chunkBegin: 0, chunks: [65535 + 16, 8192 + 16, 21340 + 16]))
         ),
         (
             5..<10,
@@ -88,7 +94,7 @@ struct ChunkHelpeIntersectionrTests {
             0..<0,
             [],
             0,
-            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, chunkIndex: 0, chunkBegin: 0, chunks: []))
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, rangeInIntersection: true, chunkIndex: 0, chunkBegin: 0, chunks: []))
         )
     ]
     
