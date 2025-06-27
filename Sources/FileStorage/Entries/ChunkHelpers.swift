@@ -1,4 +1,5 @@
 import NIOCore
+import AsyncAlgorithms
 import NIOAdvanced
 import Foundation
 import ErrorHandle
@@ -586,5 +587,41 @@ extension BufferSpace: Collection {
                 return chunkSize
             }
         }
+    }
+}
+
+extension AsyncSequence where Element == ByteBuffer {
+    /// 从 AsyncSequence<ByteBuffer> 中按指定大小分块输出
+    func chunkedChannel(_ chunkSize: Int64) -> AsyncThrowingChannel<ByteBuffer, Error> {
+        let channel = AsyncThrowingChannel<ByteBuffer, Error>()
+        Task {
+            do {
+                var curChunk = ByteBuffer()
+                for try await var chunk in self {
+                    let nextSize = curChunk.readableBytes + chunk.readableBytes
+                    if nextSize < chunkSize {
+                        curChunk.writeBuffer(&chunk)
+                    } else if nextSize == chunkSize {
+                        curChunk.writeBuffer(&chunk)
+                        await channel.send(curChunk)
+                        curChunk.clear()
+                    } else {
+                        var left = chunk.readSlice(length: nextSize - Int(chunkSize))!
+                        var right = chunk.readSlice(length: chunk.readableBytes)!
+                        curChunk.writeBuffer(&left)
+                        await channel.send(curChunk)
+                        curChunk.clear()
+                        curChunk.writeBuffer(&right)
+                    }
+                }
+                if curChunk.readableBytes > 0 {
+                    await channel.send(curChunk)
+                }
+                channel.finish()
+            } catch {
+                channel.fail(error)
+            }
+        }
+        return channel
     }
 }

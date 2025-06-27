@@ -1,4 +1,5 @@
 import Fluent
+import FluentSQL
 import FluentPostgresDriver
 import ErrorHandle
 import Cryptos
@@ -19,12 +20,14 @@ public final class FileStorage: @unchecked Sendable {
     public let logger: Logger
     public let chunkSize: Int64
     
+    public typealias PGDatabase = Database & PostgresDatabase
+    
     let storagePath: String
     let walPath: String
-    let indexDatabase: Database
+    let indexDatabase: PGDatabase
     let masterKey: Crypto.Symm.Key
     let rootInfo: RootInfo
-    var db: Database { indexDatabase }
+    var db: PGDatabase { indexDatabase }
     
     public lazy private(set) var rootDir: Directory = {
         try! .init(from: rootDirIndex, parent: nil, storage: self)
@@ -123,8 +126,13 @@ public final class FileStorage: @unchecked Sendable {
         }
         
         guard let db = self.dbs.database(logger: logger, on: eventLoop) else {
-            throw Errcase.databaseInitFailed.d()
+            throw Errcase.databaseInitFailed.d("数据库获取失败")
         }
+        
+        guard let db = self.dbs.database(logger: logger, on: eventLoop) as? Database & PostgresDatabase else {
+            throw Errcase.databaseInitFailed.d("数据库并非 PostgreSQL 数据库")
+        }
+
         self.indexDatabase = db
     }
 }
@@ -133,5 +141,19 @@ extension FileStorage {
     struct RootInfo: Sendable {
         let createDate: Date
         let modifyDate: Date
+    }
+}
+
+extension PostgresDatabase where Self: Database {
+    func trans<T>(_ closure: @escaping @Sendable (Self) -> EventLoopFuture<T>) -> EventLoopFuture<T> {
+        self.transaction { db in
+            closure(db as! Self)
+        }
+    }
+    
+    func trans<T: Sendable>(_ closure: @escaping @Sendable (Self) async throws -> T) async throws -> T {
+        try await self.transaction { db in
+            try await closure(db as! Self)
+        }
     }
 }

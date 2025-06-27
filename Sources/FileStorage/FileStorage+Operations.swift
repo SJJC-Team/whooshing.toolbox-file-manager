@@ -36,7 +36,6 @@ public extension FileStorage {
         case readFileFailed = "文件读取失败"
         case writeFileFailed = "文件写入失败"
         case openFileFailed = "文件打开失败"
-        case separateFilePartFailed = "文件数据片分割失败"
     }
 }
 

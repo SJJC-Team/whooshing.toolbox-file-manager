@@ -6,7 +6,8 @@ final class FilePart: PGModel, @unchecked Sendable {
     static let name = "file_parts"
     
     struct Fields: PGFields {
-        let id = PGField("file_id", .uuid)                          .primary.foreign(FileIndex.self, FileIndex.fields.id, onDelete: .cascade)
+        let id = PGField("id", .uuid)                               .primary
+        let fileId = PGField("file_id", .uuid)                      .foreign(FileIndex.self, FileIndex.fields.id, onDelete: .cascade)
         let tagStart = PGField("tag_start", .int)                   .required
         let byteStart = PGField("byte_start", .int64)               .required
         let byteEnd = PGField("byte_end", .int64)                   .required
@@ -25,7 +26,8 @@ final class FilePart: PGModel, @unchecked Sendable {
     }
     
     @Field(fields.id)                           var id: UUID?
-    @Parent(fields.id)                          var fileIndex: FileIndex
+    
+    @Parent(fields.fileId)                      var fileIndex: FileIndex
     @Field(fields.tagStart)                     var tagStart: Int
     
     @Field(fields.byteStart)                    var byteStart: Int64

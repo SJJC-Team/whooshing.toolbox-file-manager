@@ -163,7 +163,7 @@ extension File {
             try self.storage.masterKey.derive(salt: fileCrypto.salt, info: fileCrypto.sharedData).get()
         }
         
-        let filePath = FilePath("\(self.storage.storagePath)/\(fileCrypto.storageKey)/\(FileStorage.CryptoFileExtension)")
+        let filePath = FilePath("\(self.storage.storagePath)/\(fileCrypto.storageKey).\(FileStorage.CryptoFileExtension)")
         
         return (fileCrypto, key, filePath)
     }
