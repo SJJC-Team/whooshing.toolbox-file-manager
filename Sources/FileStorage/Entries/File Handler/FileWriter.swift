@@ -18,13 +18,14 @@ public protocol FileWriter: FileContentHandler {
 }
 
 protocol __FileWriter: FileWriter, __FileContentHandler {
+    associatedtype WritableFileHandle: WritableFileHandleProtocol
     var storage: FileStorage { get }
-    var fileWriteHandler: ReadWriteFileHandle { get }
+    var fileWriteHandler: WritableFileHandle { get }
 }
 
 extension __FileWriter {
-    var fileWriteHandler: ReadWriteFileHandle {
-        guard let handler = self.fileHandler as? ReadWriteFileHandle else {
+    var fileWriteHandler: WritableFileHandle {
+        guard let handler = self.fileHandler as? WritableFileHandle else {
             fatalError("FileHandler 配置不正确")
         }
         return handler
@@ -67,7 +68,7 @@ extension __FileWriter {
         
         // 将数据直接写入到加密文件中
         let appendRes = try await required(throws: File.Errcase.writeFileFailed, "将数据写入到 wal 文件中时失败") {
-            try await appendDataToFile(fileWriteHandler, tagStart: fileCrypto.lastTag, channel: channel)
+            try await appendChannelDataAndEncryptToFile(fileWriteHandler, tagStart: fileCrypto.lastTag, channel: channel)
         }
         
         let separateTask: EventLoopFuture<Void>
@@ -125,8 +126,8 @@ extension __FileWriter {
     }
     
     /// 将 channel 中的数据进行加密并追加到文件 fileHandler 的末尾
-    func appendDataToFile(
-        _ fileHandler: ReadWriteFileHandle,
+    func appendChannelDataAndEncryptToFile(
+        _ fileHandler: WritableFileHandle,
         tagStart: Int,
         channel: AsyncThrowingChannel<ByteBuffer, Error>
     ) async throws(BscError<FileWriterError>) -> (readBytes: Int64, writtenBytes: Int64, lastTag: Int) {
@@ -243,6 +244,8 @@ extension __FileWriter {
 
 extension File {
     struct Writer: __FileWriter, @unchecked Sendable {
+        typealias WritableFileHandle = WriteFileHandle
+        
         let fileIndex: FileIndex
         let fileCrypto: FileCrypto
         let key: Crypto.Symm.Key

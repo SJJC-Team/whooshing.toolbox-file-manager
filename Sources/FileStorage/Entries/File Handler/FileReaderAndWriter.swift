@@ -4,6 +4,8 @@ import NIOConcurrencyHelpers
 
 extension File {
     struct ReaderAndWriter: __FileReader, __FileWriter, @unchecked Sendable {
+        typealias WritableFileHandle = ReadWriteFileHandle
+        
         let fileIndex: FileIndex
         let fileCrypto: FileCrypto
         let key: Crypto.Symm.Key

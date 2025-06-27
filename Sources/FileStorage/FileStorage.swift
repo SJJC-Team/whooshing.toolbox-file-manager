@@ -129,7 +129,7 @@ public final class FileStorage: @unchecked Sendable {
             throw Errcase.databaseInitFailed.d("数据库获取失败")
         }
         
-        guard let db = self.dbs.database(logger: logger, on: eventLoop) as? Database & PostgresDatabase else {
+        guard let db = db as? Database & PostgresDatabase else {
             throw Errcase.databaseInitFailed.d("数据库并非 PostgreSQL 数据库")
         }
 

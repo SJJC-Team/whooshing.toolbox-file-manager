@@ -590,7 +590,7 @@ extension BufferSpace: Collection {
     }
 }
 
-extension AsyncSequence where Element == ByteBuffer {
+extension AsyncSequence where Element == ByteBuffer, Element: Sendable, Self: Sendable {
     /// 从 AsyncSequence<ByteBuffer> 中按指定大小分块输出
     func chunkedChannel(_ chunkSize: Int64) -> AsyncThrowingChannel<ByteBuffer, Error> {
         let channel = AsyncThrowingChannel<ByteBuffer, Error>()

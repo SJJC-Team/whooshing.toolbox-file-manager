@@ -6,7 +6,7 @@ final class FileCrypto: PGModel, @unchecked Sendable {
     static let name = "file_cryptos"
     
     struct Fields: PGFields {
-        let id = PGField("file_id", .uuid)                          .primary.foreign(FileIndex.self, FileIndex.fields.id)
+        let id = PGField("file_id", .uuid)                          .primary.foreign(FileIndex.self, FileIndex.fields.id, onDelete: .cascade)
         let salt = PGField("hkdf_salt", .string)                    .required.unique
         let sharedData = PGField("hkdf_shared_data", .string)       .required
         let encryptedSize = PGField("encrypted_size", .int64)       .required
