@@ -56,7 +56,9 @@ public extension Directory {
     }
     
     func subitems() -> EventLoopRes<[any StorageEntry], Errcase> {
-        FileIndex.query(on: storage.indexDatabase).filter(\.$parent.$id == id).all()
+        FileIndex.query(on: storage.indexDatabase)
+            .filter(\.$parent.$id == id)
+            .all()
             .withError(Errcase.fetchSubItemFailed, "数据库查询失败")
             .flatMapThrowing
         { fileIndex throws(BscError<Errcase>) in

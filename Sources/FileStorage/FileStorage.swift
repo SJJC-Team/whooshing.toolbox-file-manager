@@ -4,6 +4,7 @@ import FluentPostgresDriver
 import ErrorHandle
 import Cryptos
 import Foundation
+import NIOAdvanced
 
 public final class FileStorage: @unchecked Sendable {
     
@@ -145,6 +146,12 @@ extension FileStorage {
 }
 
 extension PostgresDatabase where Self: Database {
+    func trans<T, G>(_ closure: @escaping @Sendable (Self) -> EventLoopResult<T, G>) -> EventLoopResult<T, G> {
+        self.trans { db in
+            closure(db).wrapped
+        }.withError()
+    }
+    
     func trans<T>(_ closure: @escaping @Sendable (Self) -> EventLoopFuture<T>) -> EventLoopFuture<T> {
         self.transaction { db in
             closure(db as! Self)
