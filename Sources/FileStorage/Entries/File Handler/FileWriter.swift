@@ -20,6 +20,17 @@ public protocol FileWriter: FileContentHandler {
     func remove(in: ClosedRange<Int64>) -> EventLoopResult<Void, BscError<File.Errcase>>
 }
 
+extension ByteIndex {
+    internal func index(fileSize: Int64) -> Int64 {
+        switch self {
+        case .begin(of: let i):
+            return i
+        case .end(of: let i):
+            return fileSize - i
+        }
+    }
+}
+
 protocol __FileWriter: FileWriter, __FileContentHandler {
     associatedtype WritableFileHandle: WritableFileHandleProtocol
     var fileWriteHandler: WritableFileHandle { get }
@@ -34,25 +45,31 @@ extension __FileWriter {
     }
     
     func insert(at index: ByteIndex, from channel: AsyncThrowingChannel<ByteBuffer, Error>) -> EventLoopResult<Void, BscError<File.Errcase>> {
-        storage.db.eventLoop.makeResultWithTask { () throws(BscError<File.Errcase>) in
-            try await backPressureInsert(at: index, from: channel)
-        }.flatMap { _, dbOperation in
+        let insertIndex = index.index(fileSize: fileCrypto.encryptedSize)
+        return storage.db.eventLoop.makeResultWithTask { () throws(BscError<File.Errcase>) in
+            try await backPressureInsert(at: insertIndex, from: channel)
+        }.flatMap { appendRes, dbOperation in
             storage.db.trans { db in
                 dbOperation(db)
+            }.map {
+                fileIndex.size = fileIndex.size! + appendRes.readBytes
             }
         }
     }
     
     func replace(at index: ByteIndex, from channel: AsyncThrowingChannel<ByteBuffer, Error>) -> EventLoopResult<Void, BscError<File.Errcase>> {
-        storage.db.eventLoop.makeResultWithTask { () throws(BscError<File.Errcase>) in
-            let op1 = try await backPressureInsert(at: index, from: channel)
-            let op2 = try await removeBytes(in: op1.writtenRange)
-            return (op1.dbOperation, op2)
-        }.flatMap { op1, op2 in
+        let insertIndex = index.index(fileSize: fileCrypto.encryptedSize)
+        return storage.db.eventLoop.makeResultWithTask { () throws(BscError<File.Errcase>) in
+            let op1 = try await backPressureInsert(at: insertIndex, from: channel)
+            let op2 = try await removeBytes(in: insertIndex..<(insertIndex + op1.appendRes.readBytes))
+            return (op1.appendRes, op1.dbOperation, op2)
+        }.flatMap { appendRes, op1, op2 in
             let composedOp: @Sendable (FileStorage.PGDatabase) -> EventLoopResult<Void, BscError<File.Errcase>> = { db in
                 op1(db).flatMap { _ in op2(db) }
             }
-            return storage.db.trans { db in composedOp(db) }
+            return storage.db.trans { db in composedOp(db) }.map {
+                fileIndex.size = fileIndex.size! + appendRes.readBytes
+            }
         }
     }
     
@@ -90,21 +107,12 @@ extension __FileWriter {
     /// 将提供的数据插入到某个位置。
     /// 该函数会进行数据写入，但不会更新数据库中的指针位置，数据库操作将会作为返回值返回，需要调用者自行执行数据库操作
     func backPressureInsert(
-        at insertIndex: ByteIndex,
+        at byteStartIndex: Int64,
         from channel: AsyncThrowingChannel<ByteBuffer, Error>
     ) async throws(BscError<File.Errcase>) -> (
-        writtenRange: Range<Int64>,
+        appendRes: DataAppendingResult,
         dbOperation: @Sendable (FileStorage.PGDatabase) -> EventLoopRes<Void, File.Errcase>
     ) {
-        let byteStartIndex: Int64
-        
-        switch insertIndex {
-        case .begin(of: let i):
-            byteStartIndex = i
-        case .end(of: let i):
-            byteStartIndex = fileCrypto.encryptedSize - i
-        }
-        
         guard byteStartIndex <= fileCrypto.encryptedSize, byteStartIndex >= 0 else {
             throw File.Errcase.writeFileFailed.d("插入索引不正确，预期最大为 \(fileCrypto.encryptedSize) 且 >= 0，却得到 \(byteStartIndex)")
         }
@@ -199,7 +207,7 @@ extension __FileWriter {
         }
         
         return (
-            byteStartIndex..<(byteStartIndex + appendRes.readBytes),
+            appendRes,
             { db in
                 separateTask(db).flatMap {
                     // 更新加密数据的信息
@@ -416,6 +424,18 @@ extension __FileWriter {
     }
 }
 
+struct DataAppendingResult {
+    let readBytes: Int64
+    let writtenBytes: Int64
+    let lastTag: Int
+    
+    init(_ readBytes: Int64, _ writtenBytes: Int64, _ lastTag: Int) {
+        self.readBytes = readBytes
+        self.writtenBytes = writtenBytes
+        self.lastTag = lastTag
+    }
+}
+
 extension __FileWriter {
     
     func appendRemainingPart(
@@ -441,7 +461,7 @@ extension __FileWriter {
         _ fileHandler: WritableFileHandle,
         tagStart: Int,
         channel: AsyncThrowingChannel<ByteBuffer, Error>
-    ) async throws(BscError<FileWriterError>) -> (readBytes: Int64, writtenBytes: Int64, lastTag: Int) {
+    ) async throws(BscError<FileWriterError>) -> DataAppendingResult {
         // 取得该文件的大小，用于追加数据
         let size = try await required(throws: FileWriterError.appendDataFailed, "获取文件大小信息时失败") {
             try await fileHandler.info().size
@@ -461,7 +481,7 @@ extension __FileWriter {
                 readBytes += Int64(chunk.readableBytes)
             }
         }
-        return (readBytes, writtenBytes, curTag)
+        return .init(readBytes, writtenBytes, curTag)
     }
     
     /// 从数据库的层面上分割文件块，对文件系统 0 操作，且仅对数据库进行读操作，不负责更新操作

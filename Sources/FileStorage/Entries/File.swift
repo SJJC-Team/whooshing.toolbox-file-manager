@@ -14,10 +14,10 @@ public struct File: StorageEntry, Sendable {
     public let id: UUID
     public let name: String
     public let mimeType: MimeType
-    public let size: Int64
+    public var size: Int64 { fileIndex.size! }
     public let path: StoragePath
     public let createdAt: Date
-    public let updatedAt: Date
+    public var updatedAt: Date { fileIndex.updatedAt }
     
     public unowned let storage: FileStorage
     
@@ -41,10 +41,8 @@ public struct File: StorageEntry, Sendable {
         
         self.name = index.name
         self.mimeType = index.mimeType!
-        self.size = size
         self.path = parent + index.name
         self.createdAt = index.createdAt
-        self.updatedAt = index.updatedAt
         self.storage = storage
         self.fileIndex = index
     }
@@ -119,6 +117,7 @@ public extension File {
     
     func rename(as name: String) -> EventLoopRes<File, Errcase> {
         fileIndex.name = name
+        fileIndex.mimeType = name.fileExtension == nil ? .unknow : .init(fileExtension: name.fileExtension!)
         return fileIndex.update(on: storage.indexDatabase)
             .withError(Errcase.renameFileFailed, "数据库更新失败")
             .flatMapThrowing

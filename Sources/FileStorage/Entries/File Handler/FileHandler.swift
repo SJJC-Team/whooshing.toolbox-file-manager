@@ -2,9 +2,10 @@ import NIOFileSystem
 import AsyncAlgorithms
 import Cryptos
 import NIOConcurrencyHelpers
+import ErrorHandle
 
 public protocol FileContentHandler: Sendable {
-    func close() async throws
+    func close() async throws(BscError<File.Errcase>)
 }
 
 protocol __FileContentHandler: FileContentHandler {
@@ -24,8 +25,12 @@ extension __FileContentHandler {
         }
     }
     
-    func close() async throws {
-        try await fileHandler.close()
+    func close() async throws(BscError<File.Errcase>) {
+        do {
+            try await fileHandler.close()
+        } catch {
+            throw File.Errcase.closeFileFailed.subErr(error)
+        }
     }
 }
 

@@ -37,7 +37,7 @@ public extension FileStorage {
         case writeFileFailed = "文件写入失败"
         case removeFileDataFailed = "文件数据抹除失败"
         case openFileFailed = "文件打开失败"
-        
+        case closeFileFailed = "文件关闭失败"
     }
 }
 
