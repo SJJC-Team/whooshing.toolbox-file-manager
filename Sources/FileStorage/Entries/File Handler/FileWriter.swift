@@ -22,7 +22,6 @@ public protocol FileWriter: FileContentHandler {
 
 protocol __FileWriter: FileWriter, __FileContentHandler {
     associatedtype WritableFileHandle: WritableFileHandleProtocol
-    var storage: FileStorage { get }
     var fileWriteHandler: WritableFileHandle { get }
 }
 
@@ -135,7 +134,7 @@ extension __FileWriter {
                 byteStart: last?.byteStart ?? 0,
                 byteEnd: (last?.byteEnd ?? 0) + appendRes.readBytes,
                 byteHeadIgnore: 0,
-                byteTailLimit: 0,
+                byteTailIgnore: 0,
                 encryptedStart: fileCrypto.encryptedSize,
                 encryptedEnd: fileCrypto.encryptedSize + appendRes.writtenBytes
             )
@@ -190,7 +189,7 @@ extension __FileWriter {
                             byteStart: markPart.byteStart,
                             byteEnd: markPart.byteStart + appendRes.readBytes,
                             byteHeadIgnore: markPart.byteHeadIgnore,
-                            byteTailLimit: 0,
+                            byteTailIgnore: 0,
                             encryptedStart: fileCrypto.encryptedSize,
                             encryptedEnd: fileCrypto.encryptedSize + appendRes.writtenBytes
                         ).save(on: db)
@@ -419,7 +418,12 @@ extension __FileWriter {
 
 extension __FileWriter {
     
-    func appendRemainingPart(with byteOffset: Int64, greaterEqualThan bound: Int64, in db: FileStorage.PGDatabase, fileId: UUID) -> EventLoopFuture<Void> {
+    func appendRemainingPart(
+        with byteOffset: Int64,
+        greaterEqualThan bound: Int64,
+        in db: FileStorage.PGDatabase,
+        fileId: UUID
+    ) -> EventLoopFuture<Void> {
         db.query("""
             UPDATE "\(FilePart.schema)"
             SET 
@@ -535,7 +539,7 @@ extension __FileWriter {
             byteStart: part.byteStart,
             byteEnd: part.byteStart + newPartByteSize,
             byteHeadIgnore: part.byteHeadIgnore,
-            byteTailLimit: indexResult.rangeInIntersection ? 0 : indexResult.rangeOffset,
+            byteTailIgnore: indexResult.rangeInIntersection ? 0 : (chunkSize - indexResult.rangeOffset),
             encryptedStart: part.encryptedStart,
             encryptedEnd: part.encryptedStart + newPartEncryptedSize + (indexResult.rangeInIntersection ? 0 : chunkSize)
         )
@@ -565,7 +569,7 @@ extension File {
             fileIndex: FileIndex,
             fileCrypto: FileCrypto,
             key: Crypto.Symm.Key,
-            fileHandler: ReadWriteFileHandle,
+            fileHandler: WritableFileHandle,
             storage: FileStorage
         ) {
             self.fileIndex = fileIndex

@@ -12,6 +12,7 @@ protocol __FileContentHandler: FileContentHandler {
     var fileCrypto: FileCrypto { get }
     var key: Crypto.Symm.Key { get }
     var lock: NIOLock { get }
+    var storage: FileStorage { get }
     var fileHandler: FileHandleProtocol { get }
     var __fileHandler: FileHandleProtocol { get }
 }

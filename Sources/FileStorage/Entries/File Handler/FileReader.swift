@@ -5,6 +5,7 @@ import NIOAdvanced
 import ErrorHandle
 import AsyncAlgorithms
 import Cryptos
+import FluentKit
 
 public enum ReadPart: Sendable {
     case all
@@ -13,123 +14,171 @@ public enum ReadPart: Sendable {
 }
 
 public protocol FileReader: FileContentHandler {
-//    func read(part: ReadPart) -> AsyncThrowingChannel<ByteBuffer, BscError<File.Errcase>>
+    func read(part: ReadPart) -> AsyncThrowingChannel<ByteBuffer, BscError<File.Errcase>>
 }
 
-protocol __FileReader: FileReader, __FileContentHandler {}
+protocol __FileReader: FileReader, __FileContentHandler {
+    associatedtype ReadableFileHandle: ReadableFileHandleProtocol
+    var fileReadHandler: ReadableFileHandle { get }
+}
 
-//extension __FileReader {
-//    func read(part: ReadPart) -> AsyncThrowingChannel<ByteBuffer, BscError<File.Errcase>> {
-//        // 创建读取任务准备进行异步读取
-//        let reader = AsyncThrowingChannel<ByteBuffer, Error>()
-//        Task {
-//            do {
-//                try await self.backPressureRead(part: part, reader: reader)
-//                reader.finish()
-//            } catch {
-//                reader.fail(error)
-//            }
-//        }
-//        return reader.castError(to: BscError<File.Errcase>.self)
-//    }
-//}
-//
-//extension __FileReader {
-//    // 带有 back pressure 机制地从加密文件中按指定的块读取数据并解密
-//    func backPressureRead(part: ReadPart, reader: AsyncThrowingChannel<ByteBuffer, Error>) async throws(BscError<File.Errcase>) {
-//        // 准备读取的范围
-//        let readRange: Range<Int64>
-//        
-//        // 计算数据的落点分布
-//        let intersectionResult: ChunkHelpers.IntersectionResult
-//        
-//        let fileParts: [FilePart]
-//        
-//        switch part {
-//        case .all:
-//            readRange = 0..<fileCrypto.encryptedSize
-//            intersectionResult = .init(rangeOffset: 0, chunkIndex: 0, chunkBegin: 0, chunks: fileCrypto.chunks)
-//        case .closedRange(let r):
-//            readRange = .init(r)
-//            intersectionResult = try required(throws: File.Errcase.readFileFailed, "ClosedRange 数据落点计算失败") {
-//                try ChunkHelpers.rangeIntersection(r, in: .init(.array(fileCrypto.chunks)), offset: Int64(Crypto.Symm.Stream.cipherExtraLength))
-//            }
-//        case .range(let r):
-//            readRange = r
-//            intersectionResult = try required(throws: File.Errcase.readFileFailed, "Range 数据落点计算失败") {
-//                try ChunkHelpers.rangeIntersection(r, in: .init(.array(fileCrypto.chunks)), offset: Int64(Crypto.Symm.Stream.cipherExtraLength))
-//            }
-//        }
-//        
-//        // 遍历读取数据
-//        var curCryptedChunkIndex = intersectionResult.chunkBegin
-//        var curChunkIndex = intersectionResult.chunkIndex
-//        var curByteIndex = 0
-//        for chunkSize in intersectionResult.chunks {
-//            
-//            guard curByteIndex < readRange.count else { break }
-//            
-//            // 判断当读取的数据大小
-//            let size = min(readRange.count - curByteIndex, Int(chunkSize))
-//            
-//            // 读取文件中的加密数据
-//            let chunk = try await required(throws: File.Errcase.readFileFailed, "从文件中读取数据块时失败") {
-//                if let readHandler = fileHandler as? ReadFileHandle {
-//                    return try await readHandler.readChunks(
-//                        in: curCryptedChunkIndex..<(curCryptedChunkIndex + chunkSize),
-//                        chunkLength: .bytes(chunkSize)
-//                    ).collect(upTo: Int(chunkSize))
-//                } else if let rwHandler = fileHandler as? ReadWriteFileHandle {
-//                    return try await rwHandler.readChunks(
-//                        in: curCryptedChunkIndex..<(curCryptedChunkIndex + chunkSize),
-//                        chunkLength: .bytes(chunkSize)
-//                    ).collect(upTo: Int(chunkSize))
-//                } else {
-//                    fatalError("FileHandler")
-//                }
-//            }
-//            
-//            // 解密数据
-//            let c: ByteBuffer = try required(throws: File.Errcase.readFileFailed, "解密数据块时失败") {
-//                try Crypto.Symm.Stream.decrypt(chunk.data(), key: key, chunkTag: fileCrypto.chunkTags[curChunkIndex])
-//            }
-//            
-//            guard c.readableBytes >= size else {
-//                throw File.Errcase.readFileFailed.d("所要读取的大小大过文件数据的大小")
-//            }
-//            
-//            guard let slice = c.peekSlice(length: size) else {
-//                throw File.Errcase.readFileFailed.d("数据切片失败")
-//            }
-//                    
-//            // 通过数据通道传输数据
-//            await reader.send(slice)
-//            
-//            curChunkIndex += 1
-//            curByteIndex += size
-//            curCryptedChunkIndex += chunkSize
-//        }
-//    }
-//}
+extension __FileReader {
+    var fileReadHandler: ReadableFileHandle {
+        guard let handler = self.fileHandler as? ReadableFileHandle else {
+            fatalError("FileHandler 配置不正确")
+        }
+        return handler
+    }
+    
+    func read(part: ReadPart) -> AsyncThrowingChannel<ByteBuffer, BscError<File.Errcase>> {
+        // 创建读取任务准备进行异步读取
+        let reader = AsyncThrowingChannel<ByteBuffer, Error>()
+        Task {
+            do {
+                try await self.backPressureRead(part: part, reader: reader)
+                reader.finish()
+            } catch {
+                reader.fail(error)
+            }
+        }
+        return reader.castError(to: BscError<File.Errcase>.self)
+    }
+}
+
+enum PartIntersectionResult {
+    case all
+    case intersection(ChunkHelpers.IntersectionResult)
+}
+
+extension __FileReader {
+    // 带有 back pressure 机制地从加密文件中按指定的块读取数据并解密
+    func backPressureRead(part: ReadPart, reader: AsyncThrowingChannel<ByteBuffer, Error>) async throws(BscError<File.Errcase>) {
+        // 准备读取的范围
+        let readRange: Range<Int64>
+        
+        switch part {
+        case .all:
+            readRange = 0..<fileCrypto.encryptedSize
+        case .closedRange(let r):
+            readRange = .init(r)
+        case .range(let r):
+            readRange = r
+        }
+        
+        let fileId = try required(throws: File.Errcase.readFileFailed, "获取文件 ID 失败") {
+            try fileIndex.requireID()
+        }
+        
+        let fileParts = try await required(throws: File.Errcase.readFileFailed, "数据库查询文件数据块时失败") {
+            try await FilePart.query(on: storage.db)
+                .filter(\.$fileIndex.$id == fileId)
+                .filter(\.$byteStart < readRange.upperBound)
+                .filter(\.$byteEnd >= readRange.lowerBound)
+                .all()
+                .get()
+        }
+        
+        for (i, part) in fileParts.enumerated() {
+            let partLength = part.encryptedEnd - part.encryptedStart - 1
+            
+            let headIntersectionResult: PartIntersectionResult
+            let tailIntersectionResult: PartIntersectionResult
+            
+            if i == 0 {
+                headIntersectionResult = .intersection(
+                    try required(throws: File.Errcase.readFileFailed, "头指针落点分析失败") {
+                        try ChunkHelpers.index(
+                            readRange.lowerBound - part.encryptedStart,
+                            in: .init(.chunk(fileCrypto.chunkSize + Crypto.Symm.Stream.cipherExtraLength, total: partLength)),
+                            offset: Crypto.Symm.Stream.cipherExtraLength
+                        )
+                    }
+                )
+            } else {
+                headIntersectionResult = .all
+            }
+            
+            if i == fileParts.count - 1 {
+                tailIntersectionResult = .intersection(
+                    try required(throws: File.Errcase.readFileFailed, "尾指针落点分析失败") {
+                        try ChunkHelpers.index(
+                            readRange.upperBound - part.encryptedStart,
+                            in: .init(.chunk(fileCrypto.chunkSize + Crypto.Symm.Stream.cipherExtraLength, total: partLength)),
+                            offset: Crypto.Symm.Stream.cipherExtraLength
+                        )
+                    }
+                )
+            } else {
+                tailIntersectionResult = .all
+            }
+            
+            let chunks = fileReadHandler.readChunks(
+                in: part.encryptedRange,
+                chunkLength: .bytes(fileCrypto.chunkSize + Crypto.Symm.Stream.cipherExtraLength)
+            )
+
+            try await required(throws: File.Errcase.readFileFailed, "未知错误") {
+
+                var curPartSize = 0
+                var curChunkIndex = 0
+                for try await chunk in chunks {
+                    
+                    var data: ByteBuffer = try Crypto.Symm.Stream.decrypt(chunk.data, key: key, chunkTag: part.tagStart + curChunkIndex).get()
+                    
+                    if curPartSize == 0 {
+                        data.moveReaderIndex(forwardBy: Int(part.byteHeadIgnore))
+                    }
+                    
+                    if curPartSize + data.readableBytes >= partLength {
+                        data.moveWriterIndex(to: data.writerIndex - Int(part.byteTailIgnore))
+                    }
+                    
+                    curPartSize += data.readableBytes
+                    
+                    switch tailIntersectionResult {
+                    case .all: break
+                    case .intersection(let tailIntersection):
+                        data.moveWriterIndex(to: data.readerIndex + Int(tailIntersection.chunkBegin + tailIntersection.rangeOffset))
+                    }
+                    
+                    switch headIntersectionResult {
+                    case .all: break
+                    case .intersection(let headIntersection):
+                        data.moveReaderIndex(forwardBy: Int(headIntersection.chunkBegin + headIntersection.rangeOffset))
+                    }
+                    
+                    await reader.send(data)
+                    
+                    curChunkIndex += 1
+                }
+            }
+        }
+    }
+}
 
 extension File {
     struct Reader: __FileReader, @unchecked Sendable {
+        typealias ReadableFileHandle = ReadFileHandle
+        
         let fileIndex: FileIndex
         let fileCrypto: FileCrypto
         let key: Crypto.Symm.Key
         
         let lock = NIOLock()
         let __fileHandler: any FileHandleProtocol
+        unowned let storage: FileStorage
         
         init(
             fileIndex: FileIndex,
             fileCrypto: FileCrypto,
             key: Crypto.Symm.Key,
-            fileHandler: ReadFileHandle
+            fileHandler: ReadableFileHandle,
+            storage: FileStorage
         ) {
             self.fileIndex = fileIndex
             self.fileCrypto = fileCrypto
             self.key = key
+            self.storage = storage
             self.__fileHandler = fileHandler
         }
     }

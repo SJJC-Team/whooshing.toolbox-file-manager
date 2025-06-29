@@ -5,6 +5,8 @@ import NIOConcurrencyHelpers
 extension File {
     struct ReaderAndWriter: __FileReader, __FileWriter, @unchecked Sendable {
         typealias WritableFileHandle = ReadWriteFileHandle
+        typealias ReadableFileHandle = ReadWriteFileHandle
+        typealias WritableReadableFileHandle = WritableFileHandle
         
         let fileIndex: FileIndex
         let fileCrypto: FileCrypto
@@ -18,7 +20,7 @@ extension File {
             fileIndex: FileIndex,
             fileCrypto: FileCrypto,
             key: Crypto.Symm.Key,
-            fileHandler: ReadWriteFileHandle,
+            fileHandler: WritableReadableFileHandle,
             storage: FileStorage
         ) {
             self.fileIndex = fileIndex
