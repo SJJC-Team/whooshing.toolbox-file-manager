@@ -51,7 +51,8 @@ extension __FileWriter {
         }.flatMap { appendRes, dbOperation in
             storage.db.trans { db in
                 dbOperation(db)
-            }.map {
+            }
+            .map {
                 fileIndex.size = fileIndex.size! + appendRes.readBytes
             }
         }
@@ -118,7 +119,7 @@ extension __FileWriter {
         }
         
         // 将数据直接写入到加密文件中
-        let appendRes = try await required(throws: File.Errcase.writeFileFailed, "将数据写入到文件中时失败") {
+        let appendRes = try await required(throws: File.Errcase.writeFileFailed, "将数据写入到文件中时失败，\(fileRealPath)") {
             try await appendChannelDataAndEncryptToFile(fileWriteHandler, tagStart: fileCrypto.lastTag, channel: channel)
         }
         
@@ -128,7 +129,7 @@ extension __FileWriter {
             // 追加到文件最后
             // 查询最后一个 filePart 记录，以用于追加
             // 若 last 不存在，则表示该文件是空的
-            let last = try await required(throws: File.Errcase.writeFileFailed, "数据库检索失败") {
+            let last = try await required(throws: File.Errcase.writeFileFailed, "数据库检索失败，\(filePath)") {
                 try await FilePart.query(on: storage.db)
                     .filter(\.$fileIndex.$id == fileIndex.requireID())
                     .sort(\.$byteEnd, .descending)
@@ -153,7 +154,7 @@ extension __FileWriter {
         } else {
             // 进行数据插入，而非追加
             // 先对影响块进行分割
-            let separateResult = try await required(throws: File.Errcase.writeFileFailed, "文件块分割失败") {
+            let separateResult = try await required(throws: File.Errcase.writeFileFailed, "文件块分割失败，\(filePath)") {
                 try await separateFilePart(from: byteStartIndex)
             }
             
@@ -176,7 +177,7 @@ extension __FileWriter {
                 markPart = right
             }
             
-            let fileId = try required(throws: File.Errcase.writeFileFailed, "获取文件 ID 失败") {
+            let fileId = try required(throws: File.Errcase.writeFileFailed, "获取文件 ID 失败，\(filePath)") {
                 try fileIndex.requireID()
             }
             
@@ -214,7 +215,7 @@ extension __FileWriter {
                     fileCrypto.lastTag = appendRes.lastTag
                     fileCrypto.encryptedSize += appendRes.writtenBytes
                     return fileCrypto.update(on: db)
-                }.withError(File.Errcase.writeFileFailed, "数据库操作失败")
+                }.withError(File.Errcase.writeFileFailed, "数据库操作失败，\(filePath)")
             }
         )
     }
@@ -230,14 +231,14 @@ extension __FileWriter {
             range.upperBound <= fileCrypto.encryptedSize,
             range.upperBound >= 0
         else {
-            throw File.Errcase.removeFileDataFailed.d("提供的索引不正确，文件数据范围为 \"0..<\(fileCrypto.encryptedSize)\"，却得到 \"\(range)\"")
+            throw File.Errcase.removeFileDataFailed.d("提供的索引不正确，文件数据范围为 \"0..<\(fileCrypto.encryptedSize)\"，却得到 \"\(range)\"，\(filePath)")
         }
         
         guard !range.isEmpty else { return { $0.eventLoop.makeSucceededVoidResult() } }
         
         let removingBytes = range.upperBound - range.lowerBound - 1
         
-        let (lowerBoundSepResult, upperBoundSepResult) = try await required(throws: File.Errcase.removeFileDataFailed, "文件块分割失败") {
+        let (lowerBoundSepResult, upperBoundSepResult) = try await required(throws: File.Errcase.removeFileDataFailed, "文件块分割失败，\(filePath)") {
             (
                 // 以 lowerBound 对影响块进行分割
                 try await separateFilePart(from: range.lowerBound),
@@ -248,7 +249,7 @@ extension __FileWriter {
         
         let task: @Sendable (FileStorage.PGDatabase) -> EventLoopFuture<Void>
         
-        let fileId = try required(throws: File.Errcase.removeFileDataFailed, "获取文件 ID 失败") {
+        let fileId = try required(throws: File.Errcase.removeFileDataFailed, "获取文件 ID 失败，\(filePath)") {
             try fileIndex.requireID()
         }
         
@@ -419,7 +420,7 @@ extension __FileWriter {
                 // 更新加密数据的信息
                 fileCrypto.encryptedSize -= removingBytes
                 return fileCrypto.update(on: db)
-            }.withError(File.Errcase.removeFileDataFailed, "数据库操作失败")
+            }.withError(File.Errcase.removeFileDataFailed, "数据库操作失败，\(filePath)")
         }
     }
 }
@@ -580,6 +581,8 @@ extension File {
         let fileIndex: FileIndex
         let fileCrypto: FileCrypto
         let key: Crypto.Symm.Key
+        let filePath: StoragePath
+        let fileRealPath: FilePath
         
         let lock = NIOLock()
         let __fileHandler: FileHandleProtocol
@@ -589,6 +592,8 @@ extension File {
             fileIndex: FileIndex,
             fileCrypto: FileCrypto,
             key: Crypto.Symm.Key,
+            filePath: StoragePath,
+            fileRealPath: FilePath,
             fileHandler: WritableFileHandle,
             storage: FileStorage
         ) {
@@ -596,6 +601,8 @@ extension File {
             self.fileCrypto = fileCrypto
             self.key = key
             self.storage = storage
+            self.filePath = filePath
+            self.fileRealPath = fileRealPath
             self.__fileHandler = fileHandler
         }
     }

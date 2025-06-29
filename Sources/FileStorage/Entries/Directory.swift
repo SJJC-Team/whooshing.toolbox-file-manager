@@ -23,8 +23,8 @@ public struct Directory: StorageEntry, Sendable {
         parent: StoragePath?,
         storage: FileStorage
     ) throws(BscError<Errcase>) {
-        guard index.type == .directory else { throw .init(.indexTypeIsNotDirectory) }
-        self.id = try required(throws: Errcase.fetchDirectoryIdFailed) {
+        guard index.type == .directory else { throw Errcase.getDirectoryFailed.d("目标并非是一个目录，而是 \(index.type)") }
+        self.id = try required(throws: Errcase.getDirectoryFailed, "获取目录 ID 失败") {
             try index.getId()
         }
         self.name = index.name
@@ -59,17 +59,17 @@ public extension Directory {
         FileIndex.query(on: storage.indexDatabase)
             .filter(\.$parent.$id == id)
             .all()
-            .withError(Errcase.fetchSubItemFailed, "数据库查询失败")
+            .withError(Errcase.fetchDirectorySubItemFailed, "数据库查询失败")
             .flatMapThrowing
         { fileIndex throws(BscError<Errcase>) in
             try fileIndex.map { index throws(BscError<Errcase>) in
                 switch index.type {
                 case .file:
-                    return try required(throws: Errcase.fetchSubItemFailed, "文件获取失败") {
+                    return try required(throws: Errcase.fetchDirectorySubItemFailed, "文件获取失败") {
                         try File(from: index, parent: self.path, storage: storage)
                     }
                 case .directory:
-                    return try required(throws: Errcase.fetchSubItemFailed, "目录获取失败") {
+                    return try required(throws: Errcase.fetchDirectorySubItemFailed, "目录获取失败") {
                         try Directory(from: index, parent: self.path, storage: storage)
                     }
                 }
@@ -78,7 +78,7 @@ public extension Directory {
     }
     
     func empty(force: Bool = false) -> EventLoopRes<Void, Errcase> {
-        subitems().wrapped.flatMapEach(on: storage.eventLoop) { $0.delete(force: force).wrapped }.withError()
+        subitems().wrapped.flatMapEach(on: storage.eventLoop) { $0.delete(force: force).wrapped }.withError(Errcase.emptyDirectoryFailed)
     }
     
     func delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
@@ -113,7 +113,15 @@ public extension Directory {
         guard !self.isRoot else {
             return storage.eventLoop.makeFailedResult(Errcase.moveDirectoryFailed, "不可操作根目录")
         }
-        fileIndex.parent = dir.fileIndex.isRoot ? nil : dir.fileIndex
+        
+        let superId: UUID
+        do {
+            superId = try dir.fileIndex.requireID()
+        } catch {
+            return storage.eventLoop.makeFailedResult(Errcase.moveDirectoryFailed, "获取目标目录的 id 失败")
+        }
+        
+        fileIndex.$parent.id = dir.fileIndex.isRoot ? nil : superId
         if let name = name {
             fileIndex.name = name
         }
@@ -122,8 +130,22 @@ public extension Directory {
             .flatMapThrowing
         { () throws(BscError<Errcase>) in
             try required(throws: Errcase.moveDirectoryFailed, "未知错误") {
-                try .init(from: fileIndex, parent: self.path.isRoot ? nil : self.path.parent, storage: storage)
+                try .init(from: fileIndex, parent: dir.path, storage: storage)
             }
         }
+    }
+}
+
+extension Directory: CustomStringConvertible {
+    public var description: String {
+        """
+        Directory (
+            id: \(id?.uuidString ?? "nil")
+            name: \(name)
+            path: \(path.string)
+            createdAt: \(createdAt)
+            updatedAt: \(updatedAt)
+        )
+        """
     }
 }

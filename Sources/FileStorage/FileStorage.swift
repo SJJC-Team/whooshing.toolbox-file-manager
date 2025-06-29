@@ -17,34 +17,21 @@ public final class FileStorage: @unchecked Sendable {
         }
     }
     
+    public typealias PGDatabase = Database & PostgresDatabase
+    
     public let eventLoop: EventLoop
     public let logger: Logger
     public let chunkSize: Int64
-    
-    public typealias PGDatabase = Database & PostgresDatabase
+    public var rootDir: Directory {
+        self.__rootDir!
+    }
     
     let storagePath: String
-    let walPath: String
     let indexDatabase: PGDatabase
     let masterKey: Crypto.Symm.Key
-    let rootInfo: RootInfo
+    let rootDirIndex: FileIndex
     var db: PGDatabase { indexDatabase }
-    
-    public lazy private(set) var rootDir: Directory = {
-        try! .init(from: rootDirIndex, parent: nil, storage: self)
-    }()
-    
-    lazy private(set) var rootDirIndex: FileIndex = {
-        let index = FileIndex(isRoot: true)
-        index.name = ""
-        index.id = nil
-        index.type = .directory
-        index.parent = nil
-        index.size = nil
-        index.mimeType = nil
-        return index
-    }()
-    
+    private var __rootDir: Directory?
     private let dbs: Databases
     
     public static func new(
@@ -63,7 +50,8 @@ public final class FileStorage: @unchecked Sendable {
                 indexDatabaseConfigure: indexDatabaseConfigure,
                 chunkSize: chunkSize,
                 masterKey: masterKey,
-                logger: logger
+                logger: logger,
+                debuging: debuging
             )
         }
     }
@@ -90,15 +78,8 @@ public final class FileStorage: @unchecked Sendable {
             throw Errcase.fileSystemInitFailed.d("根目录参数读取失败")
         }
         
-        let walPath = "\(storagePath)/wal"
-        try required(throws: Errcase.fileSystemInitFailed, "wal 目录创建失败") {
-            try FileManager.default.createDirectory(at: .init(filePath: walPath), withIntermediateDirectories: true)
-        }
-        
-        self.rootInfo = .init(createDate: createDate, modifyDate: modifyDate)
         self.eventLoop = eventLoop
         self.storagePath = storagePath
-        self.walPath = walPath
         self.masterKey = masterKey
         self.chunkSize = chunkSize
         self.logger = logger
@@ -135,13 +116,20 @@ public final class FileStorage: @unchecked Sendable {
         }
 
         self.indexDatabase = db
-    }
-}
-
-extension FileStorage {
-    struct RootInfo: Sendable {
-        let createDate: Date
-        let modifyDate: Date
+        
+        let index = FileIndex(isRoot: true)
+        index.name = ""
+        index.id = nil
+        index.type = .directory
+        index.$parent.id = nil
+        index.size = nil
+        index.mimeType = nil
+        index.createdAt = createDate
+        index.updatedAt = modifyDate
+        
+        self.rootDirIndex = index
+        
+        self.__rootDir = try .init(from: rootDirIndex, parent: nil, storage: self)
     }
 }
 

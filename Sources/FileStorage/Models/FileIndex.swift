@@ -1,19 +1,21 @@
 import PgSQL
+import Fluent
 import Foundation
 
 final class FileIndex: PGModel, @unchecked Sendable {
     
-    static let name = "file_cryptos"
+    static let name = "file_indexes"
     
     struct Fields: PGFields {
         let id = PGField("id", .uuid)                                           .primary
         let name = PGField("name", .string)                                     .required
-        let mimeType = PGField("mime_type", .string)                            .foreign(FileIndex.self, FileIndex.fields.id, onDelete: .cascade)
-        let parent = PGField("parent_id", FileIndex.fields.id.dataType)
+        let mimeType = PGField("mime_type", .string)
+        let parent = PGField("parent_id", .uuid)                                .foreign(FileIndex.self, .id, onDelete: .cascade)
         let type = PGField("type", .string)                                     .required
         let size = PGField("size", .int64)
         let createdAt = PGField("create_at", .string)                           .required
         let updateAt = PGField("update_at", .string)                            .required
+        let deleteAt = PGField("delete_at", .string)
     }
     
     @ID(key: .id)                                   var id: UUID?
@@ -24,6 +26,7 @@ final class FileIndex: PGModel, @unchecked Sendable {
     @Field(fields.size)                             var size: Int64?
     @Timestamp(fields.createdAt, on: .create)       var createdAt: Date!
     @Timestamp(fields.updateAt, on: .update)        var updatedAt: Date!
+    @Timestamp(fields.deleteAt, on: .delete)        var deleteAt: Date!
     
     let isRoot: Bool
     

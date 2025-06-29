@@ -17,6 +17,14 @@ public struct StoragePath: Sendable {
         self.components = components
         self.string = components.joined(separator: "/")
     }
+    
+    public init(_ slice: Slice<Self>) {
+        var comps: [String] = []
+        for c in slice {
+            comps.append(c)
+        }
+        self.init(components: comps)
+    }
 }
 
 extension StoragePath: CustomStringConvertible, ExpressibleByStringLiteral {
@@ -97,9 +105,9 @@ extension StoragePath: Equatable {
     
     public func remove(_ subPath: StoragePath, from direction: RemoveDirection = .tail) throws(BscError<Errcase>) -> StoragePath {
         if direction == .tail {
-            guard subPath.isSuffixPath(of: self) else { throw Errcase.removeFromTailFailed.d() }
+            guard subPath.isSuffixPath(of: self) else { throw Errcase.removeFromTailFailed.d("subPath 判断失败, \(subPath)") }
         } else {
-            guard subPath.isPrefixPath(of: self) else { throw Errcase.removeFromHeadFailed.d() }
+            guard subPath.isPrefixPath(of: self) else { throw Errcase.removeFromHeadFailed.d("subPath 判断失败, \(subPath)") }
         }
         return try self.remove(of: subPath.count, from: direction)
     }

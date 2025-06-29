@@ -14,6 +14,8 @@ protocol __FileContentHandler: FileContentHandler {
     var key: Crypto.Symm.Key { get }
     var lock: NIOLock { get }
     var storage: FileStorage { get }
+    var filePath: StoragePath { get }
+    var fileRealPath: FilePath { get }
     var fileHandler: FileHandleProtocol { get }
     var __fileHandler: FileHandleProtocol { get }
 }
@@ -29,7 +31,7 @@ extension __FileContentHandler {
         do {
             try await fileHandler.close()
         } catch {
-            throw File.Errcase.closeFileFailed.subErr(error)
+            throw File.Errcase.closeFileFailed.d("\(storage.storagePath)/\(fileCrypto.storageKey).\(FileStorage.CryptoFileExtension)").subErr(error)
         }
     }
 }

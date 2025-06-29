@@ -30,17 +30,15 @@ public struct File: StorageEntry, Sendable {
         parent: StoragePath,
         storage: FileStorage
     ) throws(BscError<Errcase>) {
-        guard
-            index.type == .file,
-            let size = index.size
-        else { throw Errcase.indexTypeIsNotFile.d() }
+        guard index.type == .file else { throw Errcase.getFileFailed.d("目标并非是一个文件，而是 \(index.type)") }
+        guard let mimeType = index.mimeType else { throw Errcase.getFileFailed.d("文件 mime-type 未找到") }
         
-        self.id = try required(throws: Errcase.fetchFileIdFailed) {
+        self.id = try required(throws: Errcase.getFileFailed, "获取文件 ID 失败") {
             try index.requireID()
         }
         
         self.name = index.name
-        self.mimeType = index.mimeType!
+        self.mimeType = mimeType
         self.path = parent + index.name
         self.createdAt = index.createdAt
         self.storage = storage
@@ -50,8 +48,10 @@ public struct File: StorageEntry, Sendable {
 
 public extension File {
     func openForRead() async -> Res<FileReader, Errcase> {
-         await .async { () throws(BscError<Errcase>) in
-            let (fileCrypto, key, filePath) = try await makeFileHandleParas()
+        await .async { () throws(BscError<Errcase>) in
+            let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
+                try await makeFileHandleParas()
+            }
             let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
                 try await FileSystem.shared.openFile(forReadingAt: filePath, options: .init())
             }
@@ -59,6 +59,8 @@ public extension File {
                 fileIndex: fileIndex,
                 fileCrypto: fileCrypto,
                 key: key,
+                filePath: path,
+                fileRealPath: filePath,
                 fileHandler: fileHandler,
                 storage: storage
             )
@@ -67,7 +69,9 @@ public extension File {
     
     func openForWrite() async -> Res<FileWriter, Errcase> {
         await .async { () throws(BscError<Errcase>) in
-            let (fileCrypto, key, filePath) = try await makeFileHandleParas()
+            let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
+                try await makeFileHandleParas()
+            }
             let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
                 try await FileSystem.shared.openFile(forWritingAt: filePath, options: .modifyFile(createIfNecessary: false))
             }
@@ -75,6 +79,8 @@ public extension File {
                 fileIndex: fileIndex,
                 fileCrypto: fileCrypto,
                 key: key,
+                filePath: path,
+                fileRealPath: filePath,
                 fileHandler: fileHandler,
                 storage: storage
             )
@@ -83,7 +89,9 @@ public extension File {
     
     func openForReadAndWrite() async -> Res<FileReaderAndWriter, Errcase> {
         await .async { () throws(BscError<Errcase>) in
-            let (fileCrypto, key, filePath) = try await makeFileHandleParas()
+            let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
+                try await makeFileHandleParas()
+            }
             let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
                 try await FileSystem.shared.openFile(forReadingAndWritingAt: filePath, options: .modifyFile(createIfNecessary: false))
             }
@@ -91,6 +99,8 @@ public extension File {
                 fileIndex: fileIndex,
                 fileCrypto: fileCrypto,
                 key: key,
+                filePath: path,
+                fileRealPath: filePath,
                 fileHandler: fileHandler,
                 storage: storage
             )
@@ -109,10 +119,23 @@ public extension File {
     }
     
     func delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
-        FileIndex.query(on: storage.indexDatabase)
-            .filter(\.$id == id)
-            .delete(force: force)
-            .withError(Errcase.deleteFileFailed, "数据库删除记录失败")
+        if force {
+            return storage.db.eventLoop.makeFutureWithTask {
+                try await getRealFilePath().0
+            }.withError(Errcase.deleteFileFailed, "获取文件路径失败")
+            .flatMap { filePath in
+                fileIndex.delete(force: force, on: storage.db)
+                    .map { filePath }
+                    .withError(Errcase.deleteFileFailed, "数据库删除记录失败")
+            }.flatMap { filePath in
+                storage.db.eventLoop.makeFutureWithTask {
+                    try await FileSystem.shared.removeItem(at: filePath)
+                }.withError(Errcase.deleteFileFailed, "从文件系统删除加密文件失败")
+            }
+        } else {
+            return fileIndex.delete(force: force, on: storage.db)
+                .withError(Errcase.deleteFileFailed, "数据库删除记录失败")
+        }
     }
     
     func rename(as name: String) -> EventLoopRes<File, Errcase> {
@@ -129,7 +152,7 @@ public extension File {
     }
     
     func move(to dir: Directory, as name: String? = nil) -> EventLoopRes<File, Errcase> {
-        fileIndex.parent = dir.fileIndex.isRoot ? nil : dir.fileIndex
+        fileIndex.$parent.id = dir.fileIndex.isRoot ? nil : dir.id
         if let name = name {
             fileIndex.name = name
         }
@@ -145,26 +168,56 @@ public extension File {
 }
 
 extension File {
-    func makeFileHandleParas() async throws(BscError<Errcase>) -> (
-        FileCrypto, Crypto.Symm.Key, FilePath
-    ) {
+    
+    enum FileParaFetchErrcase: String, ErrList {
+        case databaseFailed = "数据库查询失败"
+        case fileNotExist = "文件不存在"
+        case keyDeriveFailed = "派生密钥生成失败"
+    }
+    
+    func getRealFilePath() async throws(BscError<FileParaFetchErrcase>) -> (FilePath, FileCrypto) {
         guard
             let fileCrypto = try await FileCrypto.query(on: storage.indexDatabase)
                 .filter(\.$id == id)
                 .first()
-                .withError(Errcase.writeFileFailed, "数据库查询失败")
+                .withError(FileParaFetchErrcase.databaseFailed)
                 .get()
         else {
-            throw Errcase.writeFileFailed.d("文件不存在")
+            throw FileParaFetchErrcase.fileNotExist.d(self.path.string)
         }
+         
+        return (
+            .init("\(self.storage.storagePath)/\(fileCrypto.storageKey).\(FileStorage.CryptoFileExtension)"),
+            fileCrypto
+        )
+    }
+    
+    func makeFileHandleParas() async throws(BscError<FileParaFetchErrcase>) -> (
+        FileCrypto, Crypto.Symm.Key, FilePath
+    ) {
+        let (filePath, fileCrypto) = try await getRealFilePath()
         
         // 创建派生密钥
-        let key = try required(throws: Errcase.writeFileFailed, "派生密钥生成失败") {
+        let key = try required(throws: FileParaFetchErrcase.keyDeriveFailed) {
             try self.storage.masterKey.derive(salt: fileCrypto.salt, info: fileCrypto.sharedData).get()
         }
         
-        let filePath = FilePath("\(self.storage.storagePath)/\(fileCrypto.storageKey).\(FileStorage.CryptoFileExtension)")
-        
         return (fileCrypto, key, filePath)
+    }
+}
+
+extension File: CustomStringConvertible {
+    public var description: String {
+        """
+        File (
+            id: \(id.uuidString)
+            name: \(name)
+            mimeType: \(mimeType.rawValue)
+            size: \(size)
+            path: \(path.string)
+            createdAt: \(createdAt)
+            updatedAt: \(updatedAt)
+        )
+        """
     }
 }

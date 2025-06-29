@@ -15,21 +15,17 @@ public extension FileStorage {
         case unknow = "未知错误"
         
         // 目录相关错误
-        case directoryCreateFailed = "目录创建失败"
-        case directoryGetFailed = "目录获取失败"
-        case indexTypeIsNotDirectory = "目标并非是一个目录"
-        case fetchDirectoryIdFailed = "获取目录 ID 失败"
-        case fetchSubItemFailed = "获取子项目失败"
+        case createDirectoryFailed = "目录创建失败"
+        case getDirectoryFailed = "目录获取失败"
+        case fetchDirectorySubItemFailed = "获取子项目失败"
         case deleteDirectoryFailed = "删除目录失败"
         case renameDirectoryFailed = "重命名目录失败"
         case moveDirectoryFailed = "移动目录失败"
+        case emptyDirectoryFailed = "清空目录失败"
         
         // 文件相关错误
-        case fileCreateFailed = "文件创建失败"
-        case fileGetFailed = "文件获取失败"
-        case fileIsNotExist = "文件不存在"
-        case fetchFileIdFailed = "获取文件 ID 失败"
-        case indexTypeIsNotFile = "目标并非是一个文件"
+        case createFileFailed = "文件创建失败"
+        case getFileFailed = "文件获取失败"
         case deleteFileFailed = "删除文件失败"
         case renameFileFailed = "重命名文件失败"
         case moveFileFailed = "移动文件失败"
@@ -47,13 +43,15 @@ public extension FileStorage {
         withIntermediateDirectories createIfNeed: Bool = false,
         slience: Bool = false
     ) -> EventLoopRes<Directory, Errcase> {
-        getParent(at: path, withIntermediateDirectories: createIfNeed)
-            .errCast(Errcase.directoryCreateFailed, "获取父目录 \"\(path.parent)\" 失败")
+        guard !path.isRoot else { preconditionFailure("不允许创建系统根") }
+        
+        return getParent(at: path, withIntermediateDirectories: createIfNeed)
+            .errCast(Errcase.createDirectoryFailed, "获取父目录 \"\(path.parent)\" 失败")
             .flatMap
         { parent in
             // 检查要创建的目录是否已经存在
             self.getChild(at: parent, name: path.last!)
-                .errCast(Errcase.directoryCreateFailed, "未知错误")
+                .errCast(Errcase.createDirectoryFailed, "未知错误")
                 .flatMap
             { fileIndex in
                 if let existedIndex = fileIndex, existedIndex.type == .directory {
@@ -61,15 +59,15 @@ public extension FileStorage {
                     if slience {
                         return self.eventLoop.makeSucceededResult(existedIndex)
                     } else {
-                        return self.eventLoop.makeFailedResult(Errcase.directoryCreateFailed.d("目录 \"\(path)\" 已存在"))
+                        return self.eventLoop.makeFailedResult(Errcase.createDirectoryFailed.d("目录 \"\(path)\" 已存在"))
                     }
                 } else {
                     // 要创建的目录不存在，创建新目录
-                    return self.newDirIndex(parent: parent, path: path).errCast(Errcase.directoryCreateFailed, "创建目录 \"\(path)\" 失败")
+                    return self.newDirIndex(parent: parent, path: path).errCast(Errcase.createDirectoryFailed, "创建目录 \"\(path)\" 失败")
                 }
             }
         }.flatMapThrowing { fileIndex throws(BscError<Errcase>) in
-            try required(throws: Errcase.directoryGetFailed) {
+            try required(throws: Errcase.getDirectoryFailed, path.string) {
                 try .init(from: fileIndex, parent: path.parent, storage: self)
             }
         }
@@ -77,10 +75,10 @@ public extension FileStorage {
     
     func getDirectory(at path: StoragePath) -> EventLoopRes<Directory, Errcase> {
         get(at: path)
-            .errCast(Errcase.directoryGetFailed)
+            .errCast(Errcase.getDirectoryFailed, path.string)
             .flatMapThrowing
         { fileIndex throws(BscError<Errcase>) in
-            try required(throws: Errcase.directoryGetFailed) {
+            try required(throws: Errcase.getDirectoryFailed, path.string) {
                 try .init(from: fileIndex, parent: path.parent, storage: self)
             }
         }
@@ -93,13 +91,15 @@ public extension FileStorage {
         withIntermediateDirectories createIfNeed: Bool = false,
         slience: Bool = false
     ) -> EventLoopRes<File, Errcase> {
-        getParent(at: path, withIntermediateDirectories: createIfNeed)
-            .errCast(Errcase.fileCreateFailed, "获取父目录 \"\(path.parent)\" 失败")
+        guard !path.isEmpty else { preconditionFailure("不允许空文件路径") }
+        
+        return getParent(at: path, withIntermediateDirectories: createIfNeed)
+            .errCast(Errcase.createFileFailed, "获取父目录 \"\(path.parent)\" 失败")
             .flatMap
         { parent in
             // 检查要创建的目录是否已经存在
             self.getChild(at: parent, name: path.last!)
-                .errCast(Errcase.fileCreateFailed, "未知错误")
+                .errCast(Errcase.createFileFailed, "未知错误")
                 .flatMap
             { fileIndex in
                 if let existedIndex = fileIndex, existedIndex.type == .file {
@@ -107,15 +107,15 @@ public extension FileStorage {
                     if slience {
                         return self.eventLoop.makeSucceededResult(existedIndex)
                     } else {
-                        return self.eventLoop.makeFailedResult(Errcase.fileCreateFailed.d("目录 \"\(path)\" 已存在"))
+                        return self.eventLoop.makeFailedResult(Errcase.createFileFailed.d("文件 \"\(path)\" 已存在"))
                     }
                 } else {
                     // 要创建的文件不存在，创建新文件
-                    return self.newFileIndex(parent: parent, path: path).errCast(Errcase.fileCreateFailed, "创建文件 \"\(path)\" 失败")
+                    return self.newFileIndex(parent: parent, path: path).errCast(Errcase.createFileFailed, "创建文件 \"\(path)\" 失败")
                 }
             }
         }.flatMapThrowing { fileIndex throws(BscError<Errcase>) in
-            try required(throws: Errcase.fileGetFailed) {
+            try required(throws: Errcase.getFileFailed) {
                 try .init(from: fileIndex, parent: path.parent, storage: self)
             }
         }
@@ -123,10 +123,10 @@ public extension FileStorage {
     
     func getFile(at path: StoragePath) -> EventLoopRes<File, Errcase> {
         get(at: path)
-            .errCast(Errcase.fileGetFailed)
+            .errCast(Errcase.getFileFailed)
             .flatMapThrowing
         { fileIndex throws(BscError<Errcase>) in
-            try required(throws: Errcase.fileGetFailed) {
+            try required(throws: Errcase.getFileFailed) {
                 try .init(from: fileIndex, parent: path.parent, storage: self)
             }
         }
@@ -218,17 +218,17 @@ extension FileStorage {
                 if let fileIndex = index {
                     // 该级目录存在
                     guard fileIndex.type == .directory else {
-                        return self.eventLoop.makeFailedResult(FindEntryErrcase.directoryExisted)
+                        return self.eventLoop.makeFailedResult(FindEntryErrcase.directoryExisted, path.parent.string)
                     }
                     return self.eventLoop.makeSucceededResult(fileIndex)
                 } else {
                     // 该级目录不存在
-                    if !createIfNeed {
+                    guard createIfNeed else {
                         // 若用户指定 createIfNeed 为 false，直接抛出错误
-                        return self.eventLoop.makeFailedResult(FindEntryErrcase.directoryNotExist)
+                        return self.eventLoop.makeFailedResult(FindEntryErrcase.directoryNotExist, path.parent.string)
                     }
                     // 为该级创建新目录，因为用户指定了 createIfNeed
-                    return self.newDirIndex(parent: parent, path: path).errCast(FindEntryErrcase.databaseFailed)
+                    return self.newDirIndex(parent: parent, path: path).errCast(FindEntryErrcase.databaseFailed, path.string)
                 }
             }
         }
@@ -240,11 +240,11 @@ extension FileStorage {
     ) -> EventLoopRes<FileIndex, DatabaseErrcase> {
         let new = FileIndex()
         new.id = .init()
-        new.parent = parent
+        new.$parent.id = try! parent?.getId()
         new.type = .directory
         new.mimeType = nil
         new.name = path.last!
-        return new.save(on: self.indexDatabase).map { new }.withError()
+        return new.save(on: self.indexDatabase).map { new }.withError(DatabaseErrcase.saveFailed)
     }
     
     @Sendable func newFileIndex(
@@ -254,17 +254,17 @@ extension FileStorage {
         let file = FileIndex()
         file.id = .init()
         file.name = path.last!
-        if let extensionName = file.name.components(separatedBy: ".").last {
-            file.mimeType = .init(rawValue: extensionName)
+        if let extensionName = file.name.fileExtension {
+            file.mimeType = .init(fileExtension: extensionName)
         } else {
             file.mimeType = .unknow
         }
         file.type = .file
         file.size = 0
-        file.parent = parent
+        file.$parent.id = parent?.id
         
         let fileCrypto = FileCrypto()
-        fileCrypto.fileIndex = file
+        fileCrypto.id = try! file.requireID()
         fileCrypto.salt = saltGenerate()
         fileCrypto.encryptedSize = 0
         fileCrypto.lastTag = -1
@@ -272,9 +272,16 @@ extension FileStorage {
         fileCrypto.sharedData = sharedDataGenerate(file: file)
         fileCrypto.storageKey = storageKeyGenerate(file: file)
         
-        return indexDatabase.transaction { db in
-            file.save(on: db).flatMap {
-                fileCrypto.save(on: db).map { file }
+        return db.eventLoop.makeFutureWithTask {
+            try await FileSystem.shared.withFileHandle(
+                forWritingAt: .init("\(self.storagePath)/\(fileCrypto.storageKey).\(Self.CryptoFileExtension)"),
+                options: .newFile(replaceExisting: false)
+            ) { _ in }
+        }.flatMap {
+            self.db.transaction { db in
+                file.save(on: db).flatMap {
+                    fileCrypto.save(on: db).map { file }
+                }
             }
         }.withError(DatabaseErrcase.saveFailed)
         

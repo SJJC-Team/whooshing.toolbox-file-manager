@@ -7,7 +7,7 @@ final class FilePart: PGModel, @unchecked Sendable {
     
     struct Fields: PGFields {
         let id = PGField("id", .uuid)                               .primary
-        let fileId = PGField("file_id", .uuid)                      .foreign(FileIndex.self, FileIndex.fields.id, onDelete: .cascade)
+        let fileId = PGField("file_id", .uuid)                      .required.foreign(FileIndex.self, \.id, onDelete: .cascade)
         let tagStart = PGField("tag_start", .int)                   .required
         let byteStart = PGField("byte_start", .int64)               .required
         let byteEnd = PGField("byte_end", .int64)                   .required
@@ -15,6 +15,7 @@ final class FilePart: PGModel, @unchecked Sendable {
         let byteTailIgnore = PGField("byte_tail_ignore", .int64)    .required
         let encryptedStart = PGField("encrypted_start", .int64)     .required
         let encryptedEnd = PGField("encrypted_end", .int64)         .required
+        let deleteAt = PGField("delete_at", .string)
     }
     
     var byteRange: Range<Int64> {
@@ -25,7 +26,7 @@ final class FilePart: PGModel, @unchecked Sendable {
         encryptedStart..<encryptedEnd
     }
     
-    @Field(fields.id)                           var id: UUID?
+    @ID(key: .id)                               var id: UUID?
     
     @Parent(fields.fileId)                      var fileIndex: FileIndex
     @Field(fields.tagStart)                     var tagStart: Int
@@ -38,6 +39,8 @@ final class FilePart: PGModel, @unchecked Sendable {
     
     @Field(fields.encryptedStart)               var encryptedStart: Int64
     @Field(fields.encryptedEnd)                 var encryptedEnd: Int64
+    
+    @Timestamp(fields.deleteAt, on: .delete)    var deleteAt: Date!
     
     init() {}
     

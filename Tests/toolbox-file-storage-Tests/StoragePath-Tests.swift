@@ -128,4 +128,11 @@ struct StoragePathTests {
         let added = path + "/"
         #expect(added == path)
     }
+    
+    @Test("测试 + 函数")
+    func addTest() async throws {
+        var path: StoragePath = "a/b"
+        path += "c/d/b"
+        #expect(path.count == 5)
+    }
 }

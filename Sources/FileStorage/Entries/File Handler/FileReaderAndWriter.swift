@@ -11,6 +11,8 @@ extension File {
         let fileIndex: FileIndex
         let fileCrypto: FileCrypto
         let key: Crypto.Symm.Key
+        let filePath: StoragePath
+        let fileRealPath: FilePath
         
         let lock = NIOLock()
         let __fileHandler: FileHandleProtocol
@@ -20,6 +22,8 @@ extension File {
             fileIndex: FileIndex,
             fileCrypto: FileCrypto,
             key: Crypto.Symm.Key,
+            filePath: StoragePath,
+            fileRealPath: FilePath,
             fileHandler: WritableReadableFileHandle,
             storage: FileStorage
         ) {
@@ -27,6 +31,8 @@ extension File {
             self.fileCrypto = fileCrypto
             self.key = key
             self.storage = storage
+            self.filePath = filePath
+            self.fileRealPath = fileRealPath
             self.__fileHandler = fileHandler
         }
     }

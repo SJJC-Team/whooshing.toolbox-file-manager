@@ -65,11 +65,11 @@ extension __FileReader {
             readRange = r
         }
         
-        let fileId = try required(throws: File.Errcase.readFileFailed, "获取文件 ID 失败") {
+        let fileId = try required(throws: File.Errcase.readFileFailed, "获取文件 ID 失败，\(filePath)") {
             try fileIndex.requireID()
         }
         
-        let fileParts = try await required(throws: File.Errcase.readFileFailed, "数据库查询文件数据块时失败") {
+        let fileParts = try await required(throws: File.Errcase.readFileFailed, "数据库查询文件数据块时失败，\(filePath)") {
             try await FilePart.query(on: storage.db)
                 .filter(\.$fileIndex.$id == fileId)
                 .filter(\.$byteStart < readRange.upperBound)
@@ -86,7 +86,7 @@ extension __FileReader {
             
             if i == 0 {
                 headIntersectionResult = .intersection(
-                    try required(throws: File.Errcase.readFileFailed, "头指针落点分析失败") {
+                    try required(throws: File.Errcase.readFileFailed, "头指针落点分析失败，\(filePath)") {
                         try ChunkHelpers.index(
                             readRange.lowerBound - part.encryptedStart,
                             in: .init(.chunk(fileCrypto.chunkSize + Crypto.Symm.Stream.cipherExtraLength, total: partLength)),
@@ -100,7 +100,7 @@ extension __FileReader {
             
             if i == fileParts.count - 1 {
                 tailIntersectionResult = .intersection(
-                    try required(throws: File.Errcase.readFileFailed, "尾指针落点分析失败") {
+                    try required(throws: File.Errcase.readFileFailed, "尾指针落点分析失败，\(filePath)") {
                         try ChunkHelpers.index(
                             readRange.upperBound - part.encryptedStart,
                             in: .init(.chunk(fileCrypto.chunkSize + Crypto.Symm.Stream.cipherExtraLength, total: partLength)),
@@ -117,7 +117,7 @@ extension __FileReader {
                 chunkLength: .bytes(fileCrypto.chunkSize + Crypto.Symm.Stream.cipherExtraLength)
             )
 
-            try await required(throws: File.Errcase.readFileFailed, "未知错误") {
+            try await required(throws: File.Errcase.readFileFailed, "未知错误，\(filePath) in \(fileRealPath)") {
 
                 var curPartSize = 0
                 var curChunkIndex = 0
@@ -163,6 +163,8 @@ extension File {
         let fileIndex: FileIndex
         let fileCrypto: FileCrypto
         let key: Crypto.Symm.Key
+        let filePath: StoragePath
+        let fileRealPath: FilePath
         
         let lock = NIOLock()
         let __fileHandler: any FileHandleProtocol
@@ -172,6 +174,8 @@ extension File {
             fileIndex: FileIndex,
             fileCrypto: FileCrypto,
             key: Crypto.Symm.Key,
+            filePath: StoragePath,
+            fileRealPath: FilePath,
             fileHandler: ReadableFileHandle,
             storage: FileStorage
         ) {
@@ -179,6 +183,8 @@ extension File {
             self.fileCrypto = fileCrypto
             self.key = key
             self.storage = storage
+            self.filePath = filePath
+            self.fileRealPath = fileRealPath
             self.__fileHandler = fileHandler
         }
     }
