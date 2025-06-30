@@ -6,7 +6,6 @@ import ErrorHandle
 import AsyncAlgorithms
 import Cryptos
 import FluentKit
-import FluentSQL
 
 public enum ByteIndex: Sendable {
     case begin(of: Int64 = 0)

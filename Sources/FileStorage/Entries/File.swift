@@ -1,6 +1,7 @@
 import AsyncAlgorithms
 import NIOCore
 import Foundation
+import Fluent
 import FluentKit
 import ErrorHandle
 import Cryptos
@@ -121,10 +122,10 @@ public extension File {
     func delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
         if force {
             return storage.db.eventLoop.makeFutureWithTask {
-                try await getRealFilePath().0
+                try await getRealFilePath(withDeleted: true).0
             }.withError(Errcase.deleteFileFailed, "获取文件路径失败")
             .flatMap { filePath in
-                fileIndex.delete(force: force, on: storage.db)
+                fileIndex.delete(force: true, on: storage.db)
                     .map { filePath }
                     .withError(Errcase.deleteFileFailed, "数据库删除记录失败")
             }.flatMap { filePath in
@@ -133,8 +134,23 @@ public extension File {
                 }.withError(Errcase.deleteFileFailed, "从文件系统删除加密文件失败")
             }
         } else {
-            return fileIndex.delete(force: force, on: storage.db)
-                .withError(Errcase.deleteFileFailed, "数据库删除记录失败")
+            
+            let fileId: UUID
+            
+            do {
+                fileId = try fileIndex.requireID()
+            } catch {
+                return storage.db.eventLoop.makeFailedResult(Errcase.deleteFileFailed.d("获取文件 ID 失败").subErr(error))
+            }
+            
+            return FileCrypto.query(on: storage.db)
+                .filter(\.$id == fileId)
+                .delete(force: false)
+                .withError(Errcase.deleteFileFailed, "数据库 \(FileCrypto.name) 软删除失败")
+                .flatMap {
+                    fileIndex.delete(force: false, on: storage.db)
+                        .withError(Errcase.deleteFileFailed, "数据库 \(FileIndex.name) 软删除记录失败")
+                }
         }
     }
     
@@ -175,11 +191,21 @@ extension File {
         case keyDeriveFailed = "派生密钥生成失败"
     }
     
-    func getRealFilePath() async throws(BscError<FileParaFetchErrcase>) -> (FilePath, FileCrypto) {
-        guard
-            let fileCrypto = try await FileCrypto.query(on: storage.indexDatabase)
+    func getRealFilePath(withDeleted: Bool = false) async throws(BscError<FileParaFetchErrcase>) -> (FilePath, FileCrypto) {
+        
+        let qc: QueryBuilder<FileCrypto>
+        
+        if withDeleted {
+            qc = FileCrypto.query(on: storage.indexDatabase)
                 .filter(\.$id == id)
-                .first()
+                .withDeleted()
+        } else {
+            qc = FileCrypto.query(on: storage.indexDatabase)
+                .filter(\.$id == id)
+        }
+        
+        guard
+            let fileCrypto = try await qc.first()
                 .withError(FileParaFetchErrcase.databaseFailed)
                 .get()
         else {

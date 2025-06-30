@@ -35,7 +35,7 @@ struct EntryBasicsTests {
         #expect(file.path == fileTest.path)
         #expect(file.size == fileTest.size)
         
-        try await file.delete(force: true).get()
+        try await file.delete(force: false).get()
         
         await #expect(throws: BscError<FileStorage.Errcase>.self) {
             try await storage.getFile(at: testPath).get()
@@ -65,7 +65,7 @@ struct EntryBasicsTests {
         
         let (filePath, _) = try await fileTest.getRealFilePath()
         
-        try await file.delete(force: true).get()
+        try await file.delete(force: false).get()
         
         await #expect(throws: BscError<FileStorage.Errcase>.self) {
             try await storage.getFile(at: testPath).get()
@@ -95,7 +95,7 @@ struct EntryBasicsTests {
         #expect(file.path == fileTest.path)
         #expect(file.size == fileTest.size)
         
-        try await file.delete(force: true).get()
+        try await file.delete(force: false).get()
         
         await #expect(throws: BscError<FileStorage.Errcase>.self) {
             try await storage.getFile(at: testPath).get()
@@ -125,7 +125,7 @@ struct EntryBasicsTests {
         
         let (filePath, _) = try await fileTest.getRealFilePath()
         
-        try await file.delete(force: true).get()
+        try await file.delete(force: false).get()
         
         await #expect(throws: BscError<FileStorage.Errcase>.self) {
             try await storage.getFile(at: testPath).get()
@@ -148,7 +148,7 @@ struct EntryBasicsTests {
             #expect(dir.name == p.last!)
             #expect(dir.path == p)
             
-            try await dir.delete(force: true).get()
+            try await dir.delete(force: false).get()
             
             await #expect(throws: BscError<FileStorage.Errcase>.self) {
                 try await storage.getDirectory(at: p).get()
@@ -184,7 +184,7 @@ struct EntryBasicsTests {
         #expect(dir.name == dirTest.name)
         #expect(dir.path == dirTest.path)
         
-        try await dir.delete(force: true).get()
+        try await dir.delete(force: false).get()
         
         await #expect(throws: BscError<FileStorage.Errcase>.self) {
             try await storage.getDirectory(at: testPath).get()
@@ -218,7 +218,7 @@ struct EntryBasicsTests {
         #expect(dir.name == dirTest.name)
         #expect(dir.path == dirTest.path)
         
-        try await dir.delete(force: true).get()
+        try await dir.delete(force: false).get()
         
         await #expect(throws: BscError<FileStorage.Errcase>.self) {
             try await storage.getDirectory(at: testPath).get()
@@ -239,7 +239,7 @@ struct EntryBasicsTests {
             #expect(dir.name == p.last!)
             #expect(dir.path == p)
             
-            try await dir.delete(force: true).get()
+            try await dir.delete(force: false).get()
             
             await #expect(throws: BscError<FileStorage.Errcase>.self) {
                 try await storage.getDirectory(at: p).get()
@@ -247,10 +247,43 @@ struct EntryBasicsTests {
         }
     }
     
-    @Test("数据库中的数据应当为空")
+    @Test("数据库和文件系统中的数据应当为空")
     func emptyTest() async throws {
         let storage = try await TestingShared.getFileStorage()
+
+        #expect(try await FileIndex.query(on: storage.db).all().count == 0)
+        #expect(try await FileCrypto.query(on: storage.db).all().count == 0)
+        #expect(try await FilePart.query(on: storage.db).all().count == 0)
+    }
+    
+    @Test("从主目录删除所有子文件夹和子文件")
+    func emptyAllTest() async throws {
+        let storage = try await TestingShared.getFileStorage()
         
+        try await storage.rootDir.empty(force: true).get()
+    }
+    
+    @Test("数据库和文件系统中的数据应当为空")
+    func emptyTest2() async throws {
+        let storage = try await TestingShared.getFileStorage()
+        
+        let dir = try await FileSystem.shared.openDirectory(atPath: .init(storage.storagePath))
+        
+        var pass = true
+        do {
+            for try await entry in dir.listContents() {
+                if let last = entry.path.lastComponent, last.string.hasPrefix(".") {
+                    continue
+                }
+                pass = false
+                break
+            }
+            try await dir.close()
+        } catch {
+            try await dir.close()
+        }
+        
+        #expect(pass)
         #expect(try await FileIndex.query(on: storage.db).all().count == 0)
         #expect(try await FileCrypto.query(on: storage.db).all().count == 0)
         #expect(try await FilePart.query(on: storage.db).all().count == 0)

@@ -17,7 +17,7 @@ public final class FileStorage: @unchecked Sendable {
         }
     }
     
-    public typealias PGDatabase = Database & PostgresDatabase
+    public typealias PGDatabase = Database & PostgresDatabase & SQLDatabase
     
     public let eventLoop: EventLoop
     public let logger: Logger
@@ -111,7 +111,7 @@ public final class FileStorage: @unchecked Sendable {
             throw Errcase.databaseInitFailed.d("数据库获取失败")
         }
         
-        guard let db = db as? Database & PostgresDatabase else {
+        guard let db = db as? PGDatabase else {
             throw Errcase.databaseInitFailed.d("数据库并非 PostgreSQL 数据库")
         }
 
@@ -133,7 +133,7 @@ public final class FileStorage: @unchecked Sendable {
     }
 }
 
-extension PostgresDatabase where Self: Database {
+extension Database {
     func trans<T, G>(_ closure: @escaping @Sendable (Self) -> EventLoopResult<T, G>) -> EventLoopResult<T, G> {
         self.trans { db in
             closure(db).wrapped

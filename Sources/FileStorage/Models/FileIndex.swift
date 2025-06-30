@@ -18,6 +18,8 @@ final class FileIndex: PGModel, @unchecked Sendable {
         let deleteAt = PGField("delete_at", .string)
     }
     
+    static let fields = Fields()
+    
     @ID(key: .id)                                   var id: UUID?
     @Field(fields.name)                             var name: String
     @OptionalEnum(fields.mimeType)                  var mimeType: File.MimeType?

@@ -140,12 +140,13 @@ struct DirectoryTests {
             var last = true
             
             for entry in entries {
-                if let file =  entry as? File {
+                if let file = entry as? File {
                     let fileInfo = try #require(
                         Self.fileList.enumerated().first { element in
                             try element.element.0 == file.path.remove(Self.testDir, from: .head)
                         }
                     )
+                    #expect(file.mimeType == fileInfo.element.1)
                     fileCheck[fileInfo.offset] = true
                 } else if let dir = entry as? Directory {
                     last = false
@@ -168,6 +169,41 @@ struct DirectoryTests {
                 dirCheck[dirInfo.offset] = true
             }
         }
+    }
+    
+    @Test("硬删除测试", arguments: dirList.enumerated().map { ($0, $1) })
+    func hardDeletionTest(index: Int, path: StoragePath) async throws {
+        let storage = try await TestingShared.getFileStorage()
+        
+        let dir = try await storage.getDirectory(at: Self.testDir + path.first!).get()
+        
+        try await dir.empty(force: true).get()
+        
+        let storageDir = try await FileSystem.shared.openDirectory(atPath: .init(storage.storagePath))
+        
+        var entries: [DirectoryEntry] = []
+        do {
+            for try await entry in storageDir.listContents() {
+                guard !entry.name.string.hasPrefix(".") else {
+                    continue
+                }
+                entries.append(entry)
+            }
+            try await storageDir.close()
+        } catch {
+            try await storageDir.close()
+        }
+        
+        let filtered = Self.fileList.filter { path, type in
+            for i in 0...index {
+                guard !path.contains(Self.dirList[i].first!) else {
+                    return false
+                }
+            }
+            return true
+        }
+        
+        #expect(entries.count == filtered.count)
     }
     
     @Test("递归清空嵌套子文件夹")
@@ -198,10 +234,27 @@ struct DirectoryTests {
         }
     }
     
-    @Test("数据库中的数据应当为空")
+    @Test("数据库和文件系统中的数据应当为空")
     func emptyTest() async throws {
         let storage = try await TestingShared.getFileStorage()
         
+        let dir = try await FileSystem.shared.openDirectory(atPath: .init(storage.storagePath))
+        
+        var pass = true
+        do {
+            for try await entry in dir.listContents() {
+                if let last = entry.path.lastComponent, last.string.hasPrefix(".") {
+                    continue
+                }
+                pass = false
+                break
+            }
+            try await dir.close()
+        } catch {
+            try await dir.close()
+        }
+        
+        #expect(pass)
         #expect(try await FileIndex.query(on: storage.db).all().count == 0)
         #expect(try await FileCrypto.query(on: storage.db).all().count == 0)
         #expect(try await FilePart.query(on: storage.db).all().count == 0)

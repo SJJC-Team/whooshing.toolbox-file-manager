@@ -18,6 +18,8 @@ final class FilePart: PGModel, @unchecked Sendable {
         let deleteAt = PGField("delete_at", .string)
     }
     
+    static let fields = Fields()
+    
     var byteRange: Range<Int64> {
         byteStart..<byteEnd
     }

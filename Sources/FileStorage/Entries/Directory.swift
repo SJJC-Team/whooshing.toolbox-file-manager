@@ -1,8 +1,11 @@
 import Foundation
 import NIOCore
+import Fluent
+import FluentSQL
 import FluentKit
 import ErrorHandle
 import NIOAdvanced
+import NIOFileSystem
 
 public struct Directory: StorageEntry, Sendable {
     
@@ -55,10 +58,20 @@ public extension Directory {
         }
     }
     
-    func subitems() -> EventLoopRes<[any StorageEntry], Errcase> {
-        FileIndex.query(on: storage.indexDatabase)
-            .filter(\.$parent.$id == id)
-            .all()
+    func subitems(withDeleted: Bool = false) -> EventLoopRes<[any StorageEntry], Errcase> {
+        
+        let r: QueryBuilder<FileIndex>
+        
+        if withDeleted {
+            r = FileIndex.query(on: storage.indexDatabase)
+                .filter(\.$parent.$id == id)
+                .withDeleted()
+        } else {
+            r = FileIndex.query(on: storage.indexDatabase)
+                .filter(\.$parent.$id == id)
+        }
+        
+        return r.all()
             .withError(Errcase.fetchDirectorySubItemFailed, "数据库查询失败")
             .flatMapThrowing
         { fileIndex throws(BscError<Errcase>) in
@@ -78,7 +91,11 @@ public extension Directory {
     }
     
     func empty(force: Bool = false) -> EventLoopRes<Void, Errcase> {
-        subitems().wrapped.flatMapEach(on: storage.eventLoop) { $0.delete(force: force).wrapped }.withError(Errcase.emptyDirectoryFailed)
+        subitems(withDeleted: force).wrapped
+            .flatMapEach(on: storage.eventLoop) {
+                $0.delete(force: force).wrapped
+            }
+            .withError(Errcase.emptyDirectoryFailed)
     }
     
     func delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
@@ -88,10 +105,106 @@ public extension Directory {
         else {
             return storage.eventLoop.makeFailedResult(Errcase.deleteDirectoryFailed, "不可删除根目录")
         }
-        return FileIndex.query(on: storage.indexDatabase)
-            .filter(\.$id == id)
-            .delete(force: force)
-            .withError(Errcase.deleteDirectoryFailed, "数据库删除记录失败")
+        
+        if force {
+            let query = """
+            SELECT fc."\(FileCrypto.fields.storageKey.name)"
+            FROM (
+                WITH RECURSIVE descendants AS (
+                    SELECT "\(FileIndex.fields.id.name)" FROM "\(FileIndex.name)" WHERE "\(FileIndex.fields.id.name)" = '\(id.uuidString)'
+                    UNION ALL
+                    SELECT f."\(FileIndex.fields.id.name)" FROM "\(FileIndex.name)" f
+                    INNER JOIN descendants d ON f."\(FileIndex.fields.parent.name)" = d."\(FileIndex.fields.id.name)"
+                )
+                SELECT "\(FileIndex.fields.id.name)" FROM descendants
+            ) d
+            LEFT JOIN "\(FileCrypto.name)" fc ON fc."\(FileCrypto.fields.id.name)" = d.id where fc."\(FileCrypto.fields.storageKey.name)" is not null;
+            """
+            
+            // 强制删除，删除数据库文件索引的同时，还需要删除硬盘上的所有关联的真实文件
+            return storage.db.query(query)
+                .withError(Errcase.deleteDirectoryFailed, "数据库递归查询子项目失败")
+                .flatMap
+            { fileList in
+                FileIndex.query(on: storage.indexDatabase)
+                    .filter(\.$id == id)
+                    .delete(force: true)
+                    .map { fileList }
+                    .withError(Errcase.deleteDirectoryFailed, "数据库递归删除记录失败")
+            }.flatMap { fileList in
+                storage.db.eventLoop.makeFutureWithTask {
+                    try await withThrowingTaskGroup(of: Void.self) { group in
+                        for row in fileList {
+                            group.addTask {
+                                let path = FilePath("\(storage.storagePath)/\(try row.decode(String.self)).\(FileStorage.CryptoFileExtension)")
+                                try await FileSystem.shared.removeItem(at: path)
+                            }
+                        }
+                        try await group.waitForAll()
+                    }
+                }.withError(Errcase.deleteDirectoryFailed, "从文件系统删除加密文件失败")
+            }
+        } else {
+            // 软删除，仅递归软删除数据库文件索引
+            
+            let query = """
+                WITH RECURSIVE descendants AS (
+                    SELECT "\(FileIndex.fields.id.name)" AS id FROM "\(FileIndex.name)" WHERE "\(FileIndex.fields.id.name)" = '\(id.uuidString)'
+                    UNION ALL
+                    SELECT f."\(FileIndex.fields.id.name)" FROM "\(FileIndex.name)" f
+                    INNER JOIN descendants d ON f."\(FileIndex.fields.parent.name)" = d."\(FileIndex.fields.id.name)"
+                )
+                SELECT id FROM descendants;
+            """
+            
+            return storage.db.trans { db in
+                db.query(query)
+                .flatMapThrowing { res in
+                    try res.map { try $0.decode(String.self) }
+                }
+                .withError(Errcase.deleteDirectoryFailed, "数据库递归检索失败")
+                .map { ids in
+                    let formatter = ISO8601DateFormatter()
+                    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+                    let timestamp = formatter.string(from: Date())
+                    return (ids, timestamp)
+                }
+                .flatMap
+                { ids, ts in
+                    let indexQuery = SQLQueryString("""
+                        UPDATE \(ident: FileIndex.name)
+                        SET \(ident: FileIndex.fields.deleteAt.name) = \(literal: ts)
+                        WHERE \(ident: FileIndex.fields.id.name) IN (\(literals: ids, joinedBy: ", "))
+                    """)
+                    
+                    let cryptoQuery = SQLQueryString("""
+                        UPDATE \(ident: FileCrypto.name)
+                        SET \(ident: FileCrypto.fields.deleteAt.name) = \(literal: ts)
+                        WHERE \(ident: FileCrypto.fields.id.name) IN (\(literals: ids, joinedBy: ", "))
+                    """)
+                    
+                    let partQuery = SQLQueryString("""
+                        UPDATE \(ident: FilePart.name)
+                        SET \(ident: FilePart.fields.deleteAt.name) = \(literal: ts)
+                        WHERE \(ident: FilePart.fields.fileId.name) IN (\(literals: ids, joinedBy: ", "))
+                    """)
+                    
+                    return db.raw(indexQuery)
+                        .run()
+                        .withError(Errcase.deleteDirectoryFailed, "数据库 \(FileIndex.name) 递归软删除失败")
+                        .flatMap { _ in
+                            db.raw(cryptoQuery)
+                                .run()
+                                .withError(Errcase.deleteDirectoryFailed, "数据库 \(FileCrypto.name) 递归软删除失败")
+                        }.flatMap { _ in
+                            db.raw(partQuery)
+                                .run()
+                                .withError(Errcase.deleteDirectoryFailed, "数据库 \(FilePart.name) 递归软删除失败")
+                        }
+                }
+            }
+        }
     }
     
     func rename(as name: String) -> EventLoopRes<Directory, Errcase> {

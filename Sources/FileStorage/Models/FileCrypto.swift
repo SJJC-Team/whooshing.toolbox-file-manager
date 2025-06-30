@@ -16,6 +16,8 @@ final class FileCrypto: PGModel, @unchecked Sendable {
         let deleteAt = PGField("delete_at", .string)
     }
     
+    static let fields = Fields()
+    
     @ID(custom: fields.id.key)                  var id: UUID?
     
     var salt: Base64String {
