@@ -35,6 +35,10 @@ struct EntryBasicsTests {
         #expect(file.path == fileTest.path)
         #expect(file.size == fileTest.size)
         
+        await #expect(throws: BscError<File.Errcase>.self) {
+            try await storage.createFile(at: testPath).get()
+        }
+        
         try await file.delete(force: false).get()
         
         await #expect(throws: BscError<FileStorage.Errcase>.self) {
@@ -184,6 +188,10 @@ struct EntryBasicsTests {
         #expect(dir.name == dirTest.name)
         #expect(dir.path == dirTest.path)
         
+        await #expect(throws: BscError<File.Errcase>.self) {
+            try await storage.createDirectory(at: testPath).get()
+        }
+        
         try await dir.delete(force: false).get()
         
         await #expect(throws: BscError<FileStorage.Errcase>.self) {
@@ -253,7 +261,9 @@ struct EntryBasicsTests {
 
         #expect(try await FileIndex.query(on: storage.db).all().count == 0)
         #expect(try await FileCrypto.query(on: storage.db).all().count == 0)
-        #expect(try await FilePart.query(on: storage.db).all().count == 0)
+        #expect(try await FilePart.query(on: storage.db).withDeleted().all().count == 0)
+        #expect(try await FileIndex.query(on: storage.db).withDeleted().all().count > 0)
+        #expect(try await FileCrypto.query(on: storage.db).withDeleted().all().count > 0)
     }
     
     @Test("从主目录删除所有子文件夹和子文件")
@@ -284,9 +294,9 @@ struct EntryBasicsTests {
         }
         
         #expect(pass)
-        #expect(try await FileIndex.query(on: storage.db).all().count == 0)
-        #expect(try await FileCrypto.query(on: storage.db).all().count == 0)
-        #expect(try await FilePart.query(on: storage.db).all().count == 0)
+        #expect(try await FileIndex.query(on: storage.db).withDeleted().all().count == 0)
+        #expect(try await FileCrypto.query(on: storage.db).withDeleted().all().count == 0)
+        #expect(try await FilePart.query(on: storage.db).withDeleted().all().count == 0)
     }
     
     @MainActor

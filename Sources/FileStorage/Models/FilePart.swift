@@ -47,7 +47,7 @@ final class FilePart: PGModel, @unchecked Sendable {
     init() {}
     
     init(
-        fileIndex: FileIndex,
+        fileIndexId: UUID,
         tagStart: Int,
         byteStart: Int64,
         byteEnd: Int64,
@@ -56,7 +56,7 @@ final class FilePart: PGModel, @unchecked Sendable {
         encryptedStart: Int64,
         encryptedEnd: Int64
     ) {
-        self.fileIndex = fileIndex
+        self.$fileIndex.id = fileIndexId
         self.tagStart = tagStart
         self.byteStart = byteStart
         self.byteEnd = byteEnd

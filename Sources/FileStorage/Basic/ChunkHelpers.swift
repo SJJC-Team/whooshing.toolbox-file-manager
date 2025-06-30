@@ -3,6 +3,7 @@ import AsyncAlgorithms
 import NIOAdvanced
 import Foundation
 import ErrorHandle
+import Cryptos
 
 /// 查看同级 Diagrams 文件夹中的图片以理解原理
 /// - [1.文件覆盖写入算法.png](./Diagrams/1.文件覆盖写入算法.png)
@@ -443,6 +444,54 @@ extension ChunkHelpers {
     }
 }
 
+extension ChunkHelpers {
+    /// 将一个 FilePart 数据库记录照指定的 indexResult 进行分割，产生新实例，不进行任何数据库操作
+    ///
+    /// - Parameters:
+    ///     - part: 要进行分割的 FilePart 实例(一条数据库表记录)
+    ///     - fileCrypto: 该分割的 FilePart 的加密分割信息
+    ///     - indexResult: 该次分割的详细描述
+    /// - Returns: 修改原 part 中的参数的同时，返回新的分割出来的 filePart, 若无法进行分割则返回 nil
+    static func filePartSeparate(
+        in part: FilePart,
+        fileCrypto: FileCrypto,
+        indexResult: ChunkHelpers.IntersectionResult
+    ) throws(BscError<FileWriterError>) -> FilePart? {
+        if indexResult.rangeInIntersection && indexResult.chunkIndex == 0 && indexResult.rangeOffset == 0 {
+            return nil
+        }
+        
+        guard let chunkSize = indexResult.chunks.first else {
+            throw FileWriterError.separateFilePartFailed.d("落点判断失败，没有得到 chunk 位置")
+        }
+        
+        let fileId = try required(throws: FileWriterError.separateFilePartFailed, "取得文件 ID 失败") {
+            try fileCrypto.requireID()
+        }
+        
+        let newPartByteSize = Int64(indexResult.chunkIndex) * fileCrypto.chunkSize + indexResult.rangeOffset
+        let newPartEncryptedSize = Int64(indexResult.chunkIndex) * (fileCrypto.chunkSize + Crypto.Symm.Stream.cipherExtraLength)
+        
+        let newPart = FilePart(
+            fileIndexId: fileId,
+            tagStart: fileCrypto.lastTag,
+            byteStart: part.byteStart,
+            byteEnd: part.byteStart + newPartByteSize,
+            byteHeadIgnore: part.byteHeadIgnore,
+            byteTailIgnore: indexResult.rangeInIntersection ? 0 : (chunkSize - Crypto.Symm.Stream.cipherExtraLength - indexResult.rangeOffset),
+            encryptedStart: part.encryptedStart,
+            encryptedEnd: part.encryptedStart + newPartEncryptedSize + (indexResult.rangeInIntersection ? 0 : chunkSize)
+        )
+        
+        part.tagStart += indexResult.chunkIndex - (indexResult.rangeInIntersection ? 0 : 1)
+        part.byteStart += newPartByteSize
+        part.byteHeadIgnore = indexResult.rangeInIntersection ? 0 : indexResult.rangeOffset
+        part.encryptedStart += newPartEncryptedSize
+        
+        return newPart
+    }
+}
+
 struct BufferSpace: ExpressibleByArrayLiteral {
     
     typealias ArrayLiteralElement = Int64
@@ -598,20 +647,10 @@ extension AsyncSequence where Element == ByteBuffer, Element: Sendable, Self: Se
             do {
                 var curChunk = ByteBuffer()
                 for try await var chunk in self {
-                    let nextSize = curChunk.readableBytes + chunk.readableBytes
-                    if nextSize < chunkSize {
-                        curChunk.writeBuffer(&chunk)
-                    } else if nextSize == chunkSize {
-                        curChunk.writeBuffer(&chunk)
-                        await channel.send(curChunk)
-                        curChunk.clear()
-                    } else {
-                        var left = chunk.readSlice(length: nextSize - Int(chunkSize))!
-                        var right = chunk.readSlice(length: chunk.readableBytes)!
-                        curChunk.writeBuffer(&left)
-                        await channel.send(curChunk)
-                        curChunk.clear()
-                        curChunk.writeBuffer(&right)
+                    curChunk.writeBuffer(&chunk)
+                    while curChunk.readableBytes >= chunkSize {
+                        let data = curChunk.readSlice(length: Int(chunkSize))!
+                        await channel.send(data)
                     }
                 }
                 if curChunk.readableBytes > 0 {

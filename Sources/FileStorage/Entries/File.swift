@@ -8,7 +8,7 @@ import Cryptos
 import NIOFileSystem
 import NIOAdvanced
 
-public typealias FileReaderAndWriter = FileReader & FileWriter
+public typealias FileReadWriter = FileReader & FileWriter
 
 public struct File: StorageEntry, Sendable {
     
@@ -44,6 +44,41 @@ public struct File: StorageEntry, Sendable {
         self.createdAt = index.createdAt
         self.storage = storage
         self.fileIndex = index
+    }
+}
+
+public extension File {
+    func withReader<T, G>(_ action: (FileReader) -> EventLoopResult<T, G>) async -> Res<T, Errcase> where T: Sendable {
+        do {
+            let reader = try await openForRead().get()
+            let res = try await action(reader).get()
+            try await reader.close()
+            return .success(res)
+        } catch {
+            return .failure(Errcase.openFileFailed, subErr: error)
+        }
+    }
+    
+    func withWriter<T, G>(_ action: (FileWriter) -> EventLoopResult<T, G>) async -> Res<T, Errcase> where T: Sendable {
+        do {
+            let writer = try await openForWrite().get()
+            let res = try await action(writer).get()
+            try await writer.close()
+            return .success(res)
+        } catch {
+            return .failure(Errcase.openFileFailed, subErr: error)
+        }
+    }
+    
+    func withReadWriter<T, G>(_ action: (FileReadWriter) -> EventLoopResult<T, G>) async -> Res<T, Errcase> where T: Sendable {
+        do {
+            let readWriter = try await openForReadAndWrite().get()
+            let res = try await action(readWriter).get()
+            try await readWriter.close()
+            return .success(res)
+        } catch {
+            return .failure(Errcase.openFileFailed, subErr: error)
+        }
     }
 }
 
@@ -88,7 +123,7 @@ public extension File {
         }
     }
     
-    func openForReadAndWrite() async -> Res<FileReaderAndWriter, Errcase> {
+    func openForReadAndWrite() async -> Res<FileReadWriter, Errcase> {
         await .async { () throws(BscError<Errcase>) in
             let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
                 try await makeFileHandleParas()

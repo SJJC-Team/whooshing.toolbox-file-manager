@@ -4,7 +4,7 @@ import NIOFileSystem
 import Foundation
 @testable import FileStorage
 
-@Suite("FileStorage 实体基本测试集", .serialized)
+@Suite("Directory 测试集", .serialized)
 struct DirectoryTests {
     @Test("开始测试")
     func start() async throws {
@@ -255,9 +255,9 @@ struct DirectoryTests {
         }
         
         #expect(pass)
-        #expect(try await FileIndex.query(on: storage.db).all().count == 0)
-        #expect(try await FileCrypto.query(on: storage.db).all().count == 0)
-        #expect(try await FilePart.query(on: storage.db).all().count == 0)
+        #expect(try await FileIndex.query(on: storage.db).withDeleted().all().count == 0)
+        #expect(try await FileCrypto.query(on: storage.db).withDeleted().all().count == 0)
+        #expect(try await FilePart.query(on: storage.db).withDeleted().all().count == 0)
     }
     
     @MainActor

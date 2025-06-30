@@ -88,6 +88,7 @@ public extension FileStorage {
 public extension FileStorage {
     func createFile(
         at path: StoragePath,
+        chunkSize: Int64 = 65535,
         withIntermediateDirectories createIfNeed: Bool = false,
         slience: Bool = false
     ) -> EventLoopRes<File, Errcase> {
@@ -111,7 +112,7 @@ public extension FileStorage {
                     }
                 } else {
                     // 要创建的文件不存在，创建新文件
-                    return self.newFileIndex(parent: parent, path: path).errCast(Errcase.createFileFailed, "创建文件 \"\(path)\" 失败")
+                    return self.newFileIndex(parent: parent, path: path, chunkSize: chunkSize).errCast(Errcase.createFileFailed, "创建文件 \"\(path)\" 失败")
                 }
             }
         }.flatMapThrowing { fileIndex throws(BscError<Errcase>) in
@@ -249,7 +250,8 @@ extension FileStorage {
     
     @Sendable func newFileIndex(
         parent: FileIndex?,
-        path: StoragePath
+        path: StoragePath,
+        chunkSize: Int64
     ) -> EventLoopRes<FileIndex, DatabaseErrcase> {
         let file = FileIndex()
         file.id = .init()
@@ -267,8 +269,8 @@ extension FileStorage {
         fileCrypto.id = try! file.requireID()
         fileCrypto.salt = saltGenerate()
         fileCrypto.encryptedSize = 0
-        fileCrypto.lastTag = -1
-        fileCrypto.chunkSize = 65535
+        fileCrypto.lastTag = 0
+        fileCrypto.chunkSize = chunkSize
         fileCrypto.sharedData = sharedDataGenerate(file: file)
         fileCrypto.storageKey = storageKeyGenerate(file: file)
         

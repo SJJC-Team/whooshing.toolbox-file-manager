@@ -12,11 +12,56 @@ public enum ByteIndex: Sendable {
     case end(of: Int64 = 0)
 }
 
+public enum WriteMethod: Sendable {
+    case insert
+    case replace
+}
+
 public protocol FileWriter: FileContentHandler {
+    func write(at: ByteIndex, bytes: ByteBuffer, method: WriteMethod) -> EventLoopResult<Void, BscError<File.Errcase>>
+    func write(at: ByteIndex, from: AsyncThrowingChannel<ByteBuffer, Error>, method: WriteMethod) -> EventLoopResult<Void, BscError<File.Errcase>>
+    
+    func insert(at: ByteIndex, bytes: ByteBuffer) -> EventLoopResult<Void, BscError<File.Errcase>>
+    func replace(at: ByteIndex, bytes: ByteBuffer) -> EventLoopResult<Void, BscError<File.Errcase>>
+    
     func insert(at: ByteIndex, from: AsyncThrowingChannel<ByteBuffer, Error>) -> EventLoopResult<Void, BscError<File.Errcase>>
     func replace(at: ByteIndex, from: AsyncThrowingChannel<ByteBuffer, Error>) -> EventLoopResult<Void, BscError<File.Errcase>>
+    
     func remove(in: Range<Int64>) -> EventLoopResult<Void, BscError<File.Errcase>>
     func remove(in: ClosedRange<Int64>) -> EventLoopResult<Void, BscError<File.Errcase>>
+}
+
+public extension FileWriter {
+    func write(at: ByteIndex, bytes: ByteBuffer, method: WriteMethod = .replace) -> EventLoopResult<Void, BscError<File.Errcase>> {
+        switch method {
+        case .insert: return insert(at: at, bytes: bytes)
+        case .replace: return replace(at: at, bytes: bytes)
+        }
+    }
+    
+    func write(at: ByteIndex, from: AsyncThrowingChannel<ByteBuffer, Error>, method: WriteMethod = .replace) -> EventLoopResult<Void, BscError<File.Errcase>> {
+        switch method {
+        case .insert: return insert(at: at, from: from)
+        case .replace: return replace(at: at, from: from)
+        }
+    }
+    
+    func insert(at: ByteIndex, bytes: ByteBuffer) -> EventLoopResult<Void, BscError<File.Errcase>> {
+        insert(at: at, from: makeChannel(with: bytes))
+    }
+    
+    func replace(at: ByteIndex, bytes: ByteBuffer) -> EventLoopResult<Void, BscError<File.Errcase>> {
+        replace(at: at, from: makeChannel(with: bytes))
+    }
+    
+    internal func makeChannel(with bytes: ByteBuffer) -> AsyncThrowingChannel<ByteBuffer, Error> {
+        let res = AsyncThrowingChannel<ByteBuffer, Error>()
+        Task {
+            await res.send(bytes)
+            res.finish()
+        }
+        return res
+    }
 }
 
 extension ByteIndex {
@@ -122,6 +167,10 @@ extension __FileWriter {
             try await appendChannelDataAndEncryptToFile(fileWriteHandler, tagStart: fileCrypto.lastTag, channel: channel)
         }
         
+        let fileId = try required(throws: File.Errcase.writeFileFailed, "获取文件 ID 失败") {
+            try fileIndex.requireID()
+        }
+        
         let separateTask: @Sendable (FileStorage.PGDatabase) -> EventLoopFuture<Void>
         
         if byteStartIndex == fileCrypto.encryptedSize {
@@ -137,7 +186,7 @@ extension __FileWriter {
             
             // 创建新的 Part 记录，并填入相应的参数
             let newPart = FilePart(
-                fileIndex: fileIndex,
+                fileIndexId: fileId,
                 tagStart: fileCrypto.lastTag,
                 byteStart: last?.byteStart ?? 0,
                 byteEnd: (last?.byteEnd ?? 0) + appendRes.readBytes,
@@ -192,7 +241,7 @@ extension __FileWriter {
                     ).flatMap {
                         // 插入新的 FilePart 到数据库中
                         FilePart(
-                            fileIndex: fileIndex,
+                            fileIndexId: fileId,
                             tagStart: fileCrypto.lastTag,
                             byteStart: markPart.byteStart,
                             byteEnd: markPart.byteStart + appendRes.readBytes,
@@ -476,6 +525,7 @@ extension __FileWriter {
                 // 自动将 channel 中的数据流加密写入
                 let cipher = try Crypto.Symm.Stream.encrypt(chunk, key: key, chunkTag: tagStart).get()
                 try await writer.write(contentsOf: ByteBuffer(data: cipher))
+                try await writer.flush()
                 curTag += 1
                 writtenBytes += Int64(cipher.count)
                 readBytes += Int64(chunk.readableBytes)
@@ -518,7 +568,7 @@ extension __FileWriter {
         }
         
         let separationRes = try required(throws: FileWriterError.separateFilePartFailed, "数据片段分割失败") {
-            try Self.filePartSeparate(in: part, fileCrypto: fileCrypto, indexResult: indexResult)
+            try ChunkHelpers.filePartSeparate(in: part, fileCrypto: fileCrypto, indexResult: indexResult)
         }
         
         guard let newPart = separationRes else {
@@ -526,50 +576,6 @@ extension __FileWriter {
         }
         
         return .separated(left: newPart, right: part)
-    }
-}
-
-extension __FileWriter {
-    /// 将一个 FilePart 数据库记录照指定的 indexResult 进行分割，产生新实例，不进行任何数据库操作
-    ///
-    /// - Parameters:
-    ///     - part: 要进行分割的 FilePart 实例(一条数据库表记录)
-    ///     - fileCrypto: 该分割的 FilePart 的加密分割信息
-    ///     - indexResult: 该次分割的详细描述
-    /// - Returns: 修改原 part 中的参数的同时，返回新的分割出来的 filePart, 若无法进行分割则返回 nil
-    static func filePartSeparate(
-        in part: FilePart,
-        fileCrypto: FileCrypto,
-        indexResult: ChunkHelpers.IntersectionResult
-    ) throws(BscError<FileWriterError>) -> FilePart? {
-        if indexResult.rangeInIntersection && indexResult.chunkIndex == 0 && indexResult.rangeOffset == 0 {
-            return nil
-        }
-        
-        guard let chunkSize = indexResult.chunks.first else {
-            throw FileWriterError.separateFilePartFailed.d("落点判断失败，没有得到 chunk 位置")
-        }
-        
-        let newPartByteSize = Int64(indexResult.chunkIndex) * fileCrypto.chunkSize + indexResult.rangeOffset
-        let newPartEncryptedSize = Int64(indexResult.chunkIndex) * (fileCrypto.chunkSize + Crypto.Symm.Stream.cipherExtraLength)
-        
-        let newPart = FilePart(
-            fileIndex: part.fileIndex,
-            tagStart: fileCrypto.lastTag,
-            byteStart: part.byteStart,
-            byteEnd: part.byteStart + newPartByteSize,
-            byteHeadIgnore: part.byteHeadIgnore,
-            byteTailIgnore: indexResult.rangeInIntersection ? 0 : (chunkSize - indexResult.rangeOffset),
-            encryptedStart: part.encryptedStart,
-            encryptedEnd: part.encryptedStart + newPartEncryptedSize + (indexResult.rangeInIntersection ? 0 : chunkSize)
-        )
-        
-        part.tagStart += indexResult.chunkIndex - (indexResult.rangeInIntersection ? 0 : 1)
-        part.byteStart += newPartByteSize
-        part.byteHeadIgnore = indexResult.rangeInIntersection ? 0 : indexResult.rangeOffset
-        part.encryptedStart += newPartEncryptedSize
-        
-        return newPart
     }
 }
 

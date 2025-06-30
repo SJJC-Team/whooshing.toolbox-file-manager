@@ -43,5 +43,12 @@ struct TestingShared {
         }
         return storage
     }
-    
+}
+
+func randomData(size: Int) -> ByteBuffer {
+    var buffer = ByteBufferAllocator().buffer(capacity: size)
+    var rng = SystemRandomNumberGenerator()
+    let randomBytes = (0..<size).map { _ in UInt8.random(in: 0...255, using: &rng) }
+    buffer.writeBytes(randomBytes)
+    return buffer
 }

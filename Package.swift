@@ -15,8 +15,6 @@ let package = Package(
         .library( name: "FileStorage", targets: ["FileStorage"] )
     ],
     dependencies: [
-        .package(url: "https://github.com/SJJC-Team/whooshing-fluent.git", from: "1.0.0"),
-        .package(url: "https://github.com/vapor/fluent-postgres-driver.git", from: "2.10.0"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
 //        .package(url: "https://github.com/SJJC-Team/whooshing.toolbox-basic.git", .upToNextMajor(from: "1.3.9")),
         .package(path: "/Users/clwang/GitHub/whooshing.toolbox-basic"),
@@ -29,7 +27,6 @@ let package = Package(
             dependencies: [
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOPosix", package: "swift-nio"),
-                .product(name: "Fluent", package: "whooshing-fluent"),
                 .product(name: "PgSQL", package: "whooshing.toolbox-pgsql"),
                 .product(name: "ErrorHandle", package: "whooshing.toolbox-basic"),
                 .product(name: "NIOAdvanced", package: "whooshing.toolbox-basic"),
