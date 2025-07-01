@@ -76,6 +76,11 @@ struct FileAppendingTests {
             writer.insert(at: .begin(), bytes: testData)
         }.get()
         
+        let fileTest = try await storage.getFile(at: path).get()
+        
+        #expect(fileTest.size == file.size)
+        #expect(fileTest.size == dataSize)
+        
         let fileCrypto = try #require(
             try await FileCrypto.query(on: storage.db)
                 .filter(\.$id == file.id)
@@ -143,6 +148,8 @@ struct FileAppendingTests {
         
         let file = try await storage.getFile(at: path).get()
         
+        let fileOriginSize = file.size
+        
         let testData = randomData(size: Int(dataSize))
         
         var fileCrypto = try #require(
@@ -158,6 +165,11 @@ struct FileAppendingTests {
         try await file.withWriter { writer in
             writer.insert(at: .end(), bytes: testData)
         }.get()
+        
+        let fileTest = try await storage.getFile(at: path).get()
+        
+        #expect(file.size == fileOriginSize + dataSize)
+        #expect(fileTest.size == file.size)
         
         fileCrypto = try #require(
             try await FileCrypto.query(on: storage.db)

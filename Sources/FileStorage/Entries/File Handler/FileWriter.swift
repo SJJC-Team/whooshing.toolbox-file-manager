@@ -92,12 +92,9 @@ extension __FileWriter {
         let insertIndex = index.index(fileSize: fileCrypto.encryptedSize)
         return storage.db.eventLoop.makeResultWithTask { () throws(BscError<File.Errcase>) in
             try await backPressureInsert(at: insertIndex, from: channel)
-        }.flatMap { appendRes, dbOperation in
+        }.flatMap { _, dbOperation in
             storage.db.trans { db in
                 dbOperation(db)
-            }
-            .map {
-                fileIndex.size = fileIndex.size! + appendRes.readBytes
             }
         }
     }
@@ -112,9 +109,7 @@ extension __FileWriter {
             let composedOp: @Sendable (FileStorage.PGDatabase) -> EventLoopResult<Void, BscError<File.Errcase>> = { db in
                 op1(db).flatMap { _ in op2(db) }
             }
-            return storage.db.trans { db in composedOp(db) }.map {
-                fileIndex.size = fileIndex.size! + appendRes.readBytes
-            }
+            return storage.db.trans { db in composedOp(db) }
         }
     }
     
@@ -262,7 +257,10 @@ extension __FileWriter {
                     // 更新加密数据的信息
                     fileCrypto.lastTag = appendRes.lastTag
                     fileCrypto.encryptedSize += appendRes.writtenBytes
-                    return fileCrypto.update(on: db)
+                    return fileCrypto.update(on: db).flatMap {
+                        fileIndex.size = fileIndex.size! + appendRes.readBytes
+                        return fileIndex.save(on: db)
+                    }
                 }.withError(File.Errcase.writeFileFailed, "数据库操作失败，\(filePath)")
             }
         )
@@ -284,7 +282,29 @@ extension __FileWriter {
         
         guard !range.isEmpty else { return { $0.eventLoop.makeSucceededVoidResult() } }
         
-        let removingBytes = range.upperBound - range.lowerBound - 1
+        let removingBytes = range.upperBound - range.lowerBound
+        
+        let task = try await __removeBytes(in: range)
+        
+        return { db in
+            task(db).flatMap {
+                // 更新加密数据的信息
+                fileCrypto.encryptedSize -= removingBytes
+                return fileCrypto.update(on: db).flatMap {
+                    fileIndex.size! -= range.upperBound - range.lowerBound
+                    return fileIndex.update(on: db)
+                }
+            }.withError(File.Errcase.removeFileDataFailed, "数据库操作失败，\(filePath)")
+        }
+    }
+    
+}
+ 
+extension __FileWriter {
+    func __removeBytes(
+        in range: Range<Int64>
+    ) async throws(BscError<File.Errcase>) -> @Sendable (FileStorage.PGDatabase) -> EventLoopFuture<Void> {
+        let removingBytes = range.upperBound - range.lowerBound
         
         let (lowerBoundSepResult, upperBoundSepResult) = try await required(throws: File.Errcase.removeFileDataFailed, "文件块分割失败，\(filePath)") {
             (
@@ -369,29 +389,57 @@ extension __FileWriter {
             
         case (.noNeed(part: let lowerPart), .notEof(.separated(left: let upperLeft, right: let upperRight))):
             
-            //              |- - - - - - - - - - - - - - - - -|             : will remove
-            //              v                                 v
-            // |------------|-------------|-------------|-------------|     : origin data chunks
-            //              |             |             |     |       |
-            //              <------------->             |     |       |     : lowerPart
-            //                                          |     <------->     : upperRight
-            //                                          <----->             : upperLeft
+            let (lowerId, upperId) = try required(throws: File.Errcase.removeFileDataFailed, "获取 Part id 失败") {
+                try (lowerPart.requireID(), upperRight.requireID())
+            }
             
-            task = { db in
-                FilePart.query(on: db)
-                    .filter(\.$fileIndex.$id == fileId)
-                    .filter(\.$byteStart >= lowerPart.byteStart)
-                    .filter(\.$byteStart < upperLeft.byteStart)
-                    .delete()
-                .flatMap {
-                    upperRight.update(on: db)
-                }.flatMap {
-                    appendRemainingPart(
-                        with: -removingBytes,
-                        greaterEqualThan: upperRight.byteStart,
-                        in: db,
-                        fileId: fileId
-                    )
+            if lowerId == upperId {
+                
+                //              |- - - -|                                       : will remove
+                //              v       v
+                // |------------|-------------|-------------|-------------|     : origin data chunks
+                //              |             |
+                //              <------------->                                 : lowerPart
+                //              |       <----->                                 : upperRight
+                //              <------->                                       : upperLeft
+                
+                task = { db in
+                    upperRight.update(on: db).flatMap {
+                        appendRemainingPart(
+                            with: -removingBytes,
+                            greaterEqualThan: upperRight.byteStart,
+                            in: db,
+                            fileId: fileId
+                        )
+                    }
+                }
+                
+            } else {
+                
+                //              |- - - - - - - - - - - - - - - - -|             : will remove
+                //              v                                 v
+                // |------------|-------------|-------------|-------------|     : origin data chunks
+                //              |             |             |     |       |
+                //              <------------->             |     |       |     : lowerPart
+                //                                          |     <------->     : upperRight
+                //                                          <----->             : upperLeft
+                
+                task = { db in
+                    FilePart.query(on: db)
+                        .filter(\.$fileIndex.$id == fileId)
+                        .filter(\.$byteStart >= lowerPart.byteStart)
+                        .filter(\.$byteStart < upperLeft.byteStart)
+                        .delete()
+                    .flatMap {
+                        upperRight.update(on: db)
+                    }.flatMap {
+                        appendRemainingPart(
+                            with: -removingBytes,
+                            greaterEqualThan: upperRight.byteStart,
+                            in: db,
+                            fileId: fileId
+                        )
+                    }
                 }
             }
             
@@ -431,45 +479,70 @@ extension __FileWriter {
             
         case (.separated(left: let lowerLeft, right: let lowerRight), .notEof(.separated(left: let upperLeft, right: let upperRight))):
             
-            //        |- - - - - - - - - - - - - - - - - - - -|             : will remove
-            //        v                                       v
-            // |------------|-------------|-------------|-------------|     : origin data chunks
-            // |      |     |                           |     |       |
-            // |      |     |                           <----->       |     : upperLeft
-            // |      |     |                                 <------->     : upperRight
-            // <------>     |                                               : lowerLeft
-            //        <----->                                               : lowerRight
-         
-            task = { db in
-                FilePart.query(on: db)
-                    .filter(\.$fileIndex.$id == fileId)
-                    .filter(\.$byteStart >= lowerRight.byteStart)
-                    .filter(\.$byteStart < upperLeft.byteStart)
-                    .delete()
-                .flatMap {
-                    lowerRight.delete(on: db)
-                }.flatMap {
-                    lowerLeft.save(on: db)
-                }.flatMap {
-                    upperRight.update(on: db)
-                }.flatMap {
-                    appendRemainingPart(
-                        with: -removingBytes,
-                        greaterEqualThan: upperRight.byteStart,
-                        in: db,
-                        fileId: fileId
-                    )
+            let (lowerId, upperId) = try required(throws: File.Errcase.removeFileDataFailed, "获取 Part id 失败") {
+                try (lowerRight.requireID(), upperRight.requireID())
+            }
+            
+            if lowerId == upperId {
+                
+                //                 |- - -|                                      : will remove
+                //                 v     v
+                // |------------|-------------|-------------|-------------|     : origin data chunks
+                //              |  |     |    |
+                //              <-------->    |                                 : upperLeft
+                //              |  |     <---->                                 : upperRight
+                //              <-->          |                                 : lowerLeft
+                //                 <---------->                                 : lowerRight
+                
+                task = { db in
+                    lowerLeft.save(on: db).flatMap {
+                        upperRight.update(on: db)
+                    }.flatMap {
+                        appendRemainingPart(
+                            with: -removingBytes,
+                            greaterEqualThan: upperRight.byteStart,
+                            in: db,
+                            fileId: fileId
+                        )
+                    }
+                }
+                
+            } else {
+                
+                //        |- - - - - - - - - - - - - - - - - - - -|             : will remove
+                //        v                                       v
+                // |------------|-------------|-------------|-------------|     : origin data chunks
+                // |      |     |                           |     |       |
+                // |      |     |                           <----->       |     : upperLeft
+                // |      |     |                                 <------->     : upperRight
+                // <------>     |                                               : lowerLeft
+                //        <----->                                               : lowerRight
+             
+                task = { db in
+                    FilePart.query(on: db)
+                        .filter(\.$fileIndex.$id == fileId)
+                        .filter(\.$byteStart >= lowerRight.byteStart)
+                        .filter(\.$byteStart < upperLeft.byteStart)
+                        .delete()
+                    .flatMap {
+                        lowerRight.delete(on: db)
+                    }.flatMap {
+                        lowerLeft.save(on: db)
+                    }.flatMap {
+                        upperRight.update(on: db)
+                    }.flatMap {
+                        appendRemainingPart(
+                            with: -removingBytes,
+                            greaterEqualThan: upperRight.byteStart,
+                            in: db,
+                            fileId: fileId
+                        )
+                    }
                 }
             }
         }
         
-        return { db in
-            task(db).flatMap {
-                // 更新加密数据的信息
-                fileCrypto.encryptedSize -= removingBytes
-                return fileCrypto.update(on: db)
-            }.withError(File.Errcase.removeFileDataFailed, "数据库操作失败，\(filePath)")
-        }
+        return task
     }
 }
 

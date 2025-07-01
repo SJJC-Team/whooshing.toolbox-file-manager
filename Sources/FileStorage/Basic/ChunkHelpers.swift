@@ -505,7 +505,7 @@ extension ChunkHelpers {
         
         let newPart = FilePart(
             fileIndexId: fileId,
-            tagStart: fileCrypto.lastTag,
+            tagStart: part.tagStart,
             byteStart: part.byteStart,
             byteEnd: part.byteStart + newPartByteSize,
             byteHeadIgnore: part.byteHeadIgnore,
@@ -514,7 +514,7 @@ extension ChunkHelpers {
             encryptedEnd: part.encryptedStart + newPartEncryptedSize + (indexResult.rangeInIntersection ? 0 : chunkSize)
         )
         
-        part.tagStart += indexResult.chunkIndex - (indexResult.rangeInIntersection ? 0 : 1)
+        part.tagStart += indexResult.chunkIndex
         part.byteStart += newPartByteSize
         part.byteHeadIgnore = indexResult.rangeInIntersection ? 0 : indexResult.rangeOffset
         part.encryptedStart += newPartEncryptedSize

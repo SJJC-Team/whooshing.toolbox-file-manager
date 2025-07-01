@@ -90,7 +90,7 @@ extension __FileReader {
         
         switch readPart {
         case .all:
-            readRange = 0..<fileCrypto.encryptedSize
+            readRange = 0..<fileIndex.size!
         case .closedRange(let r):
             readRange = .init(r)
         case .range(let r):
