@@ -153,7 +153,7 @@ struct DirectoryTests {
                     
                     #expect(
                         try Self.dirList.first {
-                            try $0.contains(dir.path.remove(Self.testDir, from: .head))
+                            try $0.__contains(dir.path.remove(Self.testDir, from: .head))
                         } != nil
                     )
                     try await travel(dir: dir)
@@ -264,5 +264,26 @@ struct DirectoryTests {
     @Test("测试结束")
     func end() async throws {
         TestingShared.testStage = .fileAppending
+    }
+}
+
+extension Collection where Self.Element : Equatable {
+    func __contains<C>(_ other: C) -> Bool where C : Collection, Self.Element == C.Element {
+        if #available(iOS 16.0, *) {
+            return self.contains(other)
+        } else {
+            guard !other.isEmpty else { return true }
+            let selfArray = Array(self)
+            let otherArray = Array(other)
+
+            guard selfArray.count >= otherArray.count else { return false }
+
+            for i in 0...(selfArray.count - otherArray.count) {
+                if selfArray[i..<(i + otherArray.count)].elementsEqual(otherArray) {
+                    return true
+                }
+            }
+            return false
+        }
     }
 }
