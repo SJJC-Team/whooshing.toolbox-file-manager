@@ -15,21 +15,23 @@ struct FileAppendingTests {
         }
     }
     
+    static let testDir: StoragePath = "testing"
+    
     static let fileList: [(StoragePath, Int64, Int64, Int64)] = [
         (
-            file: "example-1.txt",
+            file: testDir + "example-1.txt",
             chunkSize: 12343,
             firstInsert: 65535 * 5,
             appendWrite: 2000
         ),
         (
-            file: "example-2.txt",
+            file: testDir + "example-2.txt",
             chunkSize: 2000,
             firstInsert: 2000 * 5,
             appendWrite: 15213
         ),
         (
-            file: "example-3.txt",
+            file: testDir + "example-3.txt",
             chunkSize: 30000,
             firstInsert: 1,
             appendWrite: 200
@@ -40,7 +42,7 @@ struct FileAppendingTests {
     func createFileTest(path: StoragePath, chunkSize: Int64) async throws {
         let storage = try await TestingShared.getFileStorage()
         
-        let file = try await storage.createFile(at: path, chunkSize: chunkSize).get()
+        let file = try await storage.createFile(at: path, chunkSize: chunkSize, withIntermediateDirectories: true).get()
         
         #expect(file.name == path.last!)
         #expect(file.mimeType == .plain)
@@ -73,7 +75,7 @@ struct FileAppendingTests {
         let testData = randomData(size: Int(dataSize))
         
         try await file.withWriter { writer in
-            writer.insert(at: .begin(), bytes: testData)
+            writer.write(at: .begin(), bytes: testData, method: .insert)
         }.get()
         
         let fileTest = try await storage.getFile(at: path).get()
@@ -106,6 +108,17 @@ struct FileAppendingTests {
         #expect(data2 == testData.getSlice(at: Int(readRange.lowerBound), length: Int(readRange.upperBound - readRange.lowerBound)))
     }
     
+    @Test("文件夹大小计算测试")
+    func directorySizeTest() async throws {
+        let storage = try await TestingShared.getFileStorage()
+        
+        let dir = try await storage.getDirectory(at: Self.testDir).get()
+        
+        let size = try await dir.getSize().get()
+        
+        #expect(Self.fileList.reduce(0) { $0 + $1.2 } == size)
+    }
+    
     @Test("写指针非法写入测试", arguments: [
         (true, 1, 1),
         (false, -1, -1),
@@ -131,13 +144,13 @@ struct FileAppendingTests {
         
         await #expect(throws: BscError<File.Errcase>.self) {
             try await file.withWriter { writer in
-                writer.insert(at: .begin(of: -1), bytes: randomData(size: 1000))
+                writer.write(at: .begin(of: -1), bytes: randomData(size: 1000), method: .insert)
             }.get()
         }
         
         await #expect(throws: BscError<File.Errcase>.self) {
             try await file.withWriter { writer in
-                writer.insert(at: .end(of: -1), bytes: randomData(size: 1000))
+                writer.write(at: .end(of: -1), bytes: randomData(size: 1000), method: .insert)
             }.get()
         }
     }
@@ -194,6 +207,17 @@ struct FileAppendingTests {
         #expect(fileParts[0].encryptedEnd == originSize)
         #expect(fileParts[1].encryptedStart == originSize)
         #expect(fileParts[1].encryptedEnd == originSize + dataSize + Int64(fileCrypto.lastTag - lastTag) * (Crypto.Symm.Stream.cipherExtraLength))
+    }
+    
+    @Test("文件夹大小计算测试2")
+    func directorySizeTest2() async throws {
+        let storage = try await TestingShared.getFileStorage()
+        
+        let dir = try await storage.getDirectory(at: Self.testDir).get()
+        
+        let size = try await dir.getSize().get()
+        
+        #expect(Self.fileList.reduce(0) { $0 + $1.2 + $1.3 } == size)
     }
     
     @Test("从主目录删除所有子文件夹和子文件")

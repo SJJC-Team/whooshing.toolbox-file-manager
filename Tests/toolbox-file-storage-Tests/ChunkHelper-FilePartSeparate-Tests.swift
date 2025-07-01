@@ -70,7 +70,7 @@ struct FilePartSeparateTests {
                     encryptedStart: 0,
                     encryptedEnd: 21 * 10 + (21 * Crypto.Symm.Stream.cipherExtraLength)
                 ),(
-                    tagStart: 19,
+                    tagStart: 20,
                     byteStart: 20 * 10 + 2,
                     byteEnd: 10000,
                     byteHeadIgnore: 2,
@@ -101,16 +101,16 @@ struct FilePartSeparateTests {
             ),
             .success((
                 (
-                    tagStart: 100000,
+                    tagStart: 100,
                     byteStart: 1006,
-                    byteEnd: 1006 + 30 * 10 + 6,
+                    byteEnd: 1006 + 30 * 10,
                     byteHeadIgnore: 6,
                     byteTailIgnore: 4,
                     encryptedStart: 1000 + (1000 / 10 * Crypto.Symm.Stream.cipherExtraLength),
                     encryptedEnd: 1310 + (1310 / 10 * Crypto.Symm.Stream.cipherExtraLength)
                 ),(
-                    tagStart: 129,
-                    byteStart: 1006 + 30 * 10 + 6,
+                    tagStart: 130,
+                    byteStart: 1006 + 30 * 10,
                     byteEnd: 9996,
                     byteHeadIgnore: 6,
                     byteTailIgnore: 4,

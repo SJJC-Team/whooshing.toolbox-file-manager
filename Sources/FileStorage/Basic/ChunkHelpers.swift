@@ -500,7 +500,7 @@ extension ChunkHelpers {
             try fileCrypto.requireID()
         }
         
-        let newPartByteSize = Int64(indexResult.chunkIndex) * fileCrypto.chunkSize + indexResult.rangeOffset
+        let newPartByteSize = Int64(indexResult.chunkIndex) * fileCrypto.chunkSize + indexResult.rangeOffset - part.byteHeadIgnore
         let newPartEncryptedSize = Int64(indexResult.chunkIndex) * (fileCrypto.chunkSize + Crypto.Symm.Stream.cipherExtraLength)
         
         let newPart = FilePart(

@@ -9,12 +9,12 @@ import NIOCore
 
 @Suite("File 数据删除测试集", .serialized)
 struct FileRemovingTests {
-//    @Test("开始测试")
-//    func start() async throws {
-//        while await TestingShared.testStage != .fileRemoving {
-//            sleep(1)
-//        }
-//    }
+    @Test("开始测试")
+    func start() async throws {
+        while await TestingShared.testStage != .fileRemoving {
+            sleep(1)
+        }
+    }
     
     typealias RemovingData = (
         range: Range<Int64>,
@@ -25,11 +25,8 @@ struct FileRemovingTests {
             tailIgnore: Int64
         )]
     )
-//    Hello World! Testing String
-//    <->     <------>
-//    Hello World! Testing String
-//    <->  <------>
-    static let fileList: [(StoragePath, ByteBuffer, Int64, [Range<Int64>])] = [
+
+    nonisolated(unsafe) static var fileList: [(StoragePath, ByteBuffer, Int64, [Range<Int64>])] = [
         (
             file: "example-0.txt",
             data: ByteBuffer(string: "Hello World! Testing String"),
@@ -39,62 +36,49 @@ struct FileRemovingTests {
                 6..<13
             ]
         ),
-//        (
-//            file: "example-1.txt",
-//            data: randomData(size: 65535 * 5),
-//            chunkSize: 12343,
-//            removings: [
-//                0..<500,
-//                200000..<300000,
-//                0..<227175,
-//                0..<0
-//            ]
-//        ),
-//        (
-//            file: "example-2.txt",
-//            chunkSize: 200,
-//            firstInsert: 2000 * 10,
-//            removings: [
-//                0..<500,
-//                1..<1,
-//                300..<8000
-//            ]
-//        ),
-//        (
-//            file: "example-3.txt",
-//            chunkSize: 30000,
-//            firstInsert: 1,
-//            removings: [
-//                0..<0,
-//                0..<1
-//            ]
-//        )
+        (
+            file: "example-1.txt",
+            data: randomData(size: 65535 * 5),
+            chunkSize: 12343,
+            removings: [
+                0..<500,
+                200000..<300000,
+                0..<227175,
+                0..<0
+            ]
+        ),
+        (
+            file: "example-2.txt",
+            data: randomData(size: 2000 * 10),
+            chunkSize: 200,
+            removings: [
+                0..<500,
+                1..<1,
+                300..<8000
+            ]
+        ),
+        (
+            file: "example-3.txt",
+            firstInsert: randomData(size: 1),
+            chunkSize: 30000,
+            removings: [
+                0..<0,
+                0..<1
+            ]
+        ),
+        (
+            file: "example-4.txt",
+            firstInsert: randomData(size: 500000),
+            chunkSize: 30000,
+            removings: [
+                100000..<110000,
+                200000..<250000,
+                300000..<310000,
+                100..<250,
+                1000..<330000
+            ]
+        ),
     ]
-    
-//    removings: [
-//        (
-//            500..<1000,
-//            [
-//                0..<500,
-//                500..<327175
-//            ], [
-//                (0..<12371, 0, 11843),
-//                (0..<328431, 1000, 0)
-//            ]
-//        ),
-//        (
-//            200000..<300000,
-//            [
-//                0..<500,
-//                500..<200000,
-//                200000..<227175
-//            ], [
-//                (0..<12371, 0, 11843),
-//                (0..<210307, 1000, 10331),
-//                (296904..<328431, 3268, 0)
-//            ]
-//        )
-//    ]
     
     @Test("文件创建", arguments: fileList.map { ($0.0, $0.2) })
     func createFileTest(path: StoragePath, chunkSize: Int64) async throws {
@@ -102,8 +86,8 @@ struct FileRemovingTests {
         _ = try await storage.createFile(at: path, chunkSize: chunkSize).get()
     }
     
-    @Test("文件写入", arguments: fileList)
-    func fileWriteTest(path: StoragePath, data: ByteBuffer, chunkSize: Int64, removings: [Range<Int64>]) async throws {
+    @Test("文件数据抹除测试", arguments: fileList)
+    func fileDataRemoveTest(path: StoragePath, data: ByteBuffer, chunkSize: Int64, removings: [Range<Int64>]) async throws {
         let storage = try await TestingShared.getFileStorage()
         
         let file = try await storage.getFile(at: path).get()
@@ -127,54 +111,31 @@ struct FileRemovingTests {
         var dataTest = data
         
         for removing in removings {
-            try await file.withWriter { writer in
-                writer.remove(in: removing)
-            }.get()
+            print(dataTest.readableBytes)
             
-            let fileData = try await file.withReader { reader in
-                reader.readData(part: .all)
+            let fileData = try await file.withReadWriter { readWriter in
+                readWriter.remove(in: removing).flatMap {
+                    readWriter.readData(part: .all)
+                }
             }.get()
             
             var right = dataTest.getSlice(at: Int(removing.upperBound), length: dataTest.readableBytes - Int(removing.upperBound)) ?? ByteBuffer()
             dataTest = dataTest.getSlice(at: 0, length: Int(removing.lowerBound)) ?? ByteBuffer()
             
             dataTest.writeBuffer(&right)
-            
-            print("dataTest: \(dataTest.getString(at: 0, length: dataTest.readableBytes) ?? "nil")")
-            print("fileData: \(fileData.getString(at: 0, length: fileData.readableBytes) ?? "nil")")
-            
+
+//            print("dataTest: \(dataTest.getString(at: 0, length: dataTest.readableBytes) ?? "nil")")
+//            print("fileData: \(fileData.getString(at: 0, length: fileData.readableBytes) ?? "nil")")
             #expect(dataTest == fileData)
+            #expect(file.size == dataTest.readableBytes)
+            
+            let parts = try await FilePart.query(on: storage.db)
+                .filter(\.$fileIndex.$id == file.id)
+                .all()
+            
+            #expect(parts.reduce(0, { $0 + ($1.byteEnd - $1.byteStart) }) == dataTest.readableBytes)
         }
     }
-    
-//    @Test("删除数据", arguments: fileList.map { ($0.0, $0.3) })
-//    func fileDataRemoveTest(path: StoragePath, removings: [RemovingData]) async throws {
-//        let storage = try await TestingShared.getFileStorage()
-//        
-//        let file = try await storage.getFile(at: path).get()
-//        
-//        for removing in removings {
-//            try await file.withWriter { writer in
-//                writer.remove(in: removing.range)
-//            }.get()
-//            
-//            let parts = try await FilePart.query(on: storage.db)
-//                .filter(\.$fileIndex.$id == file.id)
-//                .sort(\.$byteStart, .ascending)
-//                .all()
-//            
-//            #expect(parts.count == removing.byteParts.count)
-//            
-//            for (i, part) in parts.enumerated() {
-//                #expect(part.byteStart == removing.byteParts[i].lowerBound)
-//                #expect(part.byteEnd == removing.byteParts[i].upperBound)
-//                #expect(part.encryptedStart == removing.encryptedParts[i].range.lowerBound)
-//                #expect(part.encryptedEnd == removing.encryptedParts[i].range.upperBound)
-//                #expect(part.byteHeadIgnore == removing.encryptedParts[i].headIgnore)
-//                #expect(part.byteTailIgnore == removing.encryptedParts[i].tailIgnore)
-//            }
-//        }
-//    }
     
     @Test("从主目录删除所有子文件夹和子文件")
     func emptyAllTest() async throws {
@@ -207,6 +168,51 @@ struct FileRemovingTests {
         #expect(try await FileIndex.query(on: storage.db).withDeleted().all().count == 0)
         #expect(try await FileCrypto.query(on: storage.db).withDeleted().all().count == 0)
         #expect(try await FilePart.query(on: storage.db).withDeleted().all().count == 0)
+    }
+    
+    @Test("额外随机测试")
+    func extraRandomTests() async throws {
+        do {
+            for i in 5..<10 {
+                let filePath: StoragePath = .init(stringLiteral: "example-\(i).txt")
+                let size = Int64.random(in: 10000..<300000)
+                let chunkSize = Int64.random(in: 10..<10000)
+                
+                let times = Int.random(in: 2..<12)
+                
+                var removings: [Range<Int64>] = []
+                var curSize = size
+                
+                for _ in 0..<times {
+                    let lower = Int64.random(in: 0..<curSize)
+                    let upper = Int64.random(in: lower..<curSize)
+                    curSize -= upper - lower
+                    
+                    let removing = lower..<upper
+                    removings.append(removing)
+                    guard curSize > 0 else { break }
+                }
+                
+                print("""
+                (
+                    file: "\(filePath)", 
+                    data: randomData(size: \(size)), 
+                    chunkSize: \(chunkSize), 
+                    removings: [
+                        \(removings.map { $0.description }.joined(separator: ",\n\t\t"))
+                    ]
+                ),
+                """)
+                try await self.createFileTest(path: filePath, chunkSize: chunkSize)
+                try await self.fileDataRemoveTest(path: filePath, data: randomData(size: Int(size)), chunkSize: chunkSize, removings: removings)
+            }
+            try await self.emptyAllTest()
+            try await self.emptyTest()
+        } catch {
+            try await self.emptyAllTest()
+            try await self.emptyTest()
+            throw error
+        }
     }
     
     @MainActor

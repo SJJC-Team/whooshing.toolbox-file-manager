@@ -26,6 +26,7 @@ struct EntryBasicsTests {
         #expect(file.mimeType == .plain)
         #expect(file.path == testPath)
         #expect(file.size == 0)
+        #expect(file.isExist())
         
         let fileTest = try await storage.getFile(at: testPath).get()
         
@@ -34,12 +35,15 @@ struct EntryBasicsTests {
         #expect(file.mimeType == fileTest.mimeType)
         #expect(file.path == fileTest.path)
         #expect(file.size == fileTest.size)
+        #expect(fileTest.isExist())
         
         await #expect(throws: BscError<File.Errcase>.self) {
             try await storage.createFile(at: testPath).get()
         }
         
         try await file.delete(force: false).get()
+        
+        #expect(!file.isExist())
         
         await #expect(throws: BscError<FileStorage.Errcase>.self) {
             try await storage.getFile(at: testPath).get()
@@ -58,6 +62,7 @@ struct EntryBasicsTests {
         #expect(file.mimeType == .plain)
         #expect(file.path == testPath)
         #expect(file.size == 0)
+        #expect(file.isExist())
         
         let fileTest = try await storage.getFile(at: testPath).get()
         
@@ -66,10 +71,13 @@ struct EntryBasicsTests {
         #expect(file.mimeType == fileTest.mimeType)
         #expect(file.path == fileTest.path)
         #expect(file.size == fileTest.size)
+        #expect(fileTest.isExist())
         
         let (filePath, _) = try await fileTest.getRealFilePath()
         
         try await file.delete(force: false).get()
+        
+        #expect(!file.isExist())
         
         await #expect(throws: BscError<FileStorage.Errcase>.self) {
             try await storage.getFile(at: testPath).get()
@@ -90,6 +98,7 @@ struct EntryBasicsTests {
         #expect(file.mimeType == .plain)
         #expect(file.path == testPath)
         #expect(file.size == 0)
+        #expect(file.isExist())
         
         let fileTest = try await storage.getFile(at: testPath).get()
         
@@ -98,8 +107,11 @@ struct EntryBasicsTests {
         #expect(file.mimeType == fileTest.mimeType)
         #expect(file.path == fileTest.path)
         #expect(file.size == fileTest.size)
+        #expect(fileTest.isExist())
         
         try await file.delete(force: false).get()
+        
+        #expect(!file.isExist())
         
         await #expect(throws: BscError<FileStorage.Errcase>.self) {
             try await storage.getFile(at: testPath).get()
@@ -118,6 +130,7 @@ struct EntryBasicsTests {
         #expect(file.mimeType == .plain)
         #expect(file.path == testPath)
         #expect(file.size == 0)
+        #expect(file.isExist())
         
         let fileTest = try await storage.getFile(at: testPath).get()
         
@@ -126,10 +139,13 @@ struct EntryBasicsTests {
         #expect(file.mimeType == fileTest.mimeType)
         #expect(file.path == fileTest.path)
         #expect(file.size == fileTest.size)
+        #expect(fileTest.isExist())
         
         let (filePath, _) = try await fileTest.getRealFilePath()
         
         try await file.delete(force: false).get()
+        
+        #expect(!file.isExist())
         
         await #expect(throws: BscError<FileStorage.Errcase>.self) {
             try await storage.getFile(at: testPath).get()
@@ -151,8 +167,11 @@ struct EntryBasicsTests {
             
             #expect(dir.name == p.last!)
             #expect(dir.path == p)
+            #expect(dir.isExist())
             
             try await dir.delete(force: false).get()
+            
+            #expect(!dir.isExist())
             
             await #expect(throws: BscError<FileStorage.Errcase>.self) {
                 try await storage.getDirectory(at: p).get()
@@ -181,18 +200,22 @@ struct EntryBasicsTests {
         
         #expect(dir.name == testPath.last!)
         #expect(dir.path == testPath)
+        #expect(dir.isExist())
         
         let dirTest = try await storage.getDirectory(at: testPath).get()
         
         #expect(dir.id == dirTest.id)
         #expect(dir.name == dirTest.name)
         #expect(dir.path == dirTest.path)
+        #expect(dirTest.isExist())
         
         await #expect(throws: BscError<File.Errcase>.self) {
             try await storage.createDirectory(at: testPath).get()
         }
         
         try await dir.delete(force: false).get()
+        
+        #expect(!dir.isExist())
         
         await #expect(throws: BscError<FileStorage.Errcase>.self) {
             try await storage.getDirectory(at: testPath).get()
@@ -219,14 +242,18 @@ struct EntryBasicsTests {
         
         #expect(dir.name == testPath.last!)
         #expect(dir.path == testPath)
+        #expect(dir.isExist())
         
         let dirTest = try await storage.getDirectory(at: testPath).get()
         
         #expect(dir.id == dirTest.id)
         #expect(dir.name == dirTest.name)
         #expect(dir.path == dirTest.path)
+        #expect(dirTest.isExist())
         
         try await dir.delete(force: false).get()
+        
+        #expect(!dir.isExist())
         
         await #expect(throws: BscError<FileStorage.Errcase>.self) {
             try await storage.getDirectory(at: testPath).get()
@@ -246,8 +273,11 @@ struct EntryBasicsTests {
             
             #expect(dir.name == p.last!)
             #expect(dir.path == p)
+            #expect(dir.isExist())
             
             try await dir.delete(force: false).get()
+            
+            #expect(!dir.isExist())
             
             await #expect(throws: BscError<FileStorage.Errcase>.self) {
                 try await storage.getDirectory(at: p).get()

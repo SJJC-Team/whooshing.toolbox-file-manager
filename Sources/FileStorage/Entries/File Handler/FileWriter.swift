@@ -176,6 +176,7 @@ extension __FileWriter {
                 try await FilePart.query(on: storage.db)
                     .filter(\.$fileIndex.$id == fileIndex.requireID())
                     .sort(\.$byteEnd, .descending)
+                    .sort(\.$byteStart, .descending)
                     .first()
             }
             
@@ -311,7 +312,7 @@ extension __FileWriter {
                 // 以 lowerBound 对影响块进行分割
                 try await separateFilePart(from: range.lowerBound),
                 // 以 upperBound 对影响块进行分割，注意如果指定的 removeBound 在文件最后，则不进行分割计算，直接将删除指针设为 eof
-                range.upperBound == fileCrypto.chunkSize ? RemoveBytesSeparationResult.eof : .notEof(try await separateFilePart(from: range.upperBound))
+                range.upperBound == fileIndex.size! ? RemoveBytesSeparationResult.eof : .notEof(try await separateFilePart(from: range.upperBound))
             )
         }
         
@@ -634,8 +635,8 @@ extension __FileWriter {
         
         let indexResult = try required(throws: FileWriterError.separateFilePartFailed, "落点判断失败") {
             try ChunkHelpers.index(
-                index - part.byteStart,
-                in: .init(.chunk(fileCrypto.chunkSize, total: part.byteEnd - part.byteStart)),
+                index - part.byteStart + part.byteHeadIgnore,
+                in: .init(.chunk(fileCrypto.chunkSize, total: part.byteEnd - part.byteStart + part.byteHeadIgnore + part.byteTailIgnore)),
                 offset: Crypto.Symm.Stream.cipherExtraLength
             )
         }

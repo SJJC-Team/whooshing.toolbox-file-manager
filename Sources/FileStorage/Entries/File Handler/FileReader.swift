@@ -106,6 +106,8 @@ extension __FileReader {
                 .filter(\.$fileIndex.$id == fileId)
                 .filter(\.$byteStart < readRange.upperBound)
                 .filter(\.$byteEnd >= readRange.lowerBound)
+                .sort(\.$byteStart, .ascending)
+                .sort(\.$byteEnd, .ascending)
                 .all()
                 .get()
         }
@@ -120,8 +122,8 @@ extension __FileReader {
             if i == 0 {
                 let res = try required(throws: File.Errcase.readFileFailed, "头指针落点分析失败，\(filePath)") {
                     try ChunkHelpers.index(
-                        readRange.lowerBound - part.byteStart,
-                        in: .init(.chunk(fileCrypto.chunkSize, total: partLength)),
+                        readRange.lowerBound - part.byteStart + part.byteHeadIgnore,
+                        in: .init(.chunk(fileCrypto.chunkSize, total: partLength + part.byteHeadIgnore + part.byteTailIgnore)),
                         offset: Crypto.Symm.Stream.cipherExtraLength
                     )
                 }
@@ -133,8 +135,8 @@ extension __FileReader {
             if i == fileParts.count - 1 {
                 let res = try required(throws: File.Errcase.readFileFailed, "尾指针落点分析失败，\(filePath)") {
                     try ChunkHelpers.index(
-                        readRange.upperBound - part.byteStart,
-                        in: .init(.chunk(fileCrypto.chunkSize, total: partLength)),
+                        readRange.upperBound - part.byteStart + part.byteHeadIgnore,
+                        in: .init(.chunk(fileCrypto.chunkSize, total: partLength + part.byteHeadIgnore + part.byteTailIgnore)),
                         offset: Crypto.Symm.Stream.cipherExtraLength
                     )
                 }
@@ -170,7 +172,7 @@ extension __FileReader {
 
             let curReadingPartEncryptedLength = chunkReadEnd - part.encryptedStart - chunkReadStartOffset
             
-            try await required(throws: File.Errcase.readFileFailed, "未知错误，\(filePath) in \(fileRealPath)") {
+            try await required(throws: File.Errcase.readFileFailed, "未知错误，\(filePath)") {
                 var curPartSize = 0
                 var curEncryptedSize = chunkReadStartOffset
                 var curChunkIndex = 0
