@@ -19,6 +19,30 @@ struct ChunkHelpeIntersectionrTests {
             .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, rangeInIntersection: false, chunkIndex: 0, chunkBegin: 0, chunks: [7]))
         ),
         (
+            20..<20,
+            [5, 5, 5, 5],
+            10,
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, rangeInIntersection: true, chunkIndex: 4, chunkBegin: 60, chunks: []))
+        ),
+        (
+            0..<21,
+            [5, 5, 6, 5],
+            10,
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, rangeInIntersection: false, chunkIndex: 0, chunkBegin: 0, chunks: [15, 15, 16, 15]))
+        ),
+        (
+            21..<21,
+            [5, 5, 6, 5],
+            10,
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, rangeInIntersection: true, chunkIndex: 4, chunkBegin: 61, chunks: []))
+        ),
+        (
+            0..<20,
+            [5, 5, 5, 5],
+            10,
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, rangeInIntersection: false, chunkIndex: 0, chunkBegin: 0, chunks: [15, 15, 15, 15]))
+        ),
+        (
             5..<5,
             [5, 5, 5],
             2,
@@ -85,10 +109,22 @@ struct ChunkHelpeIntersectionrTests {
             .success(ChunkHelpers.IntersectionResult(rangeOffset: 8192, rangeInIntersection: false, chunkIndex: 0, chunkBegin: 0, chunks: [65535 + 16, 8192 + 16, 21340 + 16]))
         ),
         (
+            327675..<327675,
+            .init(.chunk(12343, total: 327675)),
+            28,
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, rangeInIntersection: true, chunkIndex: 27, chunkBegin: 327675 + 27 * 28, chunks: .init(.chunk(12343 + 28, total: 327675))))
+        ),
+        (
             5..<10,
             [],
             16,
             .failure(.rangeBeginIndexNotFound)
+        ),
+        (
+            0..<0,
+            .init(.chunk(3000, total: 1)),
+            28,
+            .success(ChunkHelpers.IntersectionResult(rangeOffset: 0, rangeInIntersection: true, chunkIndex: 0, chunkBegin: 0, chunks: [29]))
         ),
         (
             0..<0,
@@ -182,7 +218,6 @@ struct ChunkHelpeIntersectionrTests {
             }
         }
     }
-    
 }
 
 extension ChunkHelpers.RangeErrcase: Error {}

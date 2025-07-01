@@ -188,7 +188,7 @@ extension __FileWriter {
             let newPart = FilePart(
                 fileIndexId: fileId,
                 tagStart: fileCrypto.lastTag,
-                byteStart: last?.byteStart ?? 0,
+                byteStart: last?.byteEnd ?? 0,
                 byteEnd: (last?.byteEnd ?? 0) + appendRes.readBytes,
                 byteHeadIgnore: 0,
                 byteTailIgnore: 0,
@@ -523,7 +523,7 @@ extension __FileWriter {
             // 按照 fileCrypto.chunkSize 大小读取每一块数据
             for try await chunk in channel.chunkedChannel(fileCrypto.chunkSize) {
                 // 自动将 channel 中的数据流加密写入
-                let cipher = try Crypto.Symm.Stream.encrypt(chunk, key: key, chunkTag: tagStart).get()
+                let cipher = try Crypto.Symm.Stream.encrypt(chunk, key: key, chunkTag: curTag).get()
                 try await writer.write(contentsOf: ByteBuffer(data: cipher))
                 try await writer.flush()
                 curTag += 1

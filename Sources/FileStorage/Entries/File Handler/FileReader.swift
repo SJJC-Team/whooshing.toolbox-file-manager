@@ -7,14 +7,24 @@ import AsyncAlgorithms
 import Cryptos
 import FluentKit
 
-public enum ReadPart: Sendable {
+public enum ReadPart: Sendable, CustomStringConvertible {
     case all
     case range(Range<Int64>)
     case closedRange(ClosedRange<Int64>)
+    
+    public var description: String {
+        switch self {
+        case .all: return "\(String(describing: Self.self)).all"
+        case .range(let range): return "\(String(describing: Self.self)).range(\(range))"
+        case .closedRange(let range): return "\(String(describing: Self.self)).closedRange(\(range))"
+        }
+    }
 }
 
 public protocol FileReader: FileContentHandler {
-    func read(part: ReadPart) -> AsyncThrowingChannel<ByteBuffer, BscError<File.Errcase>>
+    func read(part: ReadPart) -> AsyncThrowingChannel<ByteBuffer, Error>
+    func readData(part: ReadPart) -> EventLoopRes<ByteBuffer, File.Errcase>
+    func readChunks(part: ReadPart, _ callback: @escaping @Sendable (ByteBuffer) async throws -> ()) -> EventLoopRes<Void, File.Errcase>
 }
 
 protocol __FileReader: FileReader, __FileContentHandler {
@@ -30,7 +40,7 @@ extension __FileReader {
         return handler
     }
     
-    func read(part: ReadPart) -> AsyncThrowingChannel<ByteBuffer, BscError<File.Errcase>> {
+    func read(part: ReadPart) -> AsyncThrowingChannel<ByteBuffer, Error> {
         // 创建读取任务准备进行异步读取
         let reader = AsyncThrowingChannel<ByteBuffer, Error>()
         Task {
@@ -41,7 +51,29 @@ extension __FileReader {
                 reader.fail(error)
             }
         }
-        return reader.castError(to: BscError<File.Errcase>.self)
+        return reader
+    }
+    
+    func readData(part: ReadPart) -> EventLoopRes<ByteBuffer, File.Errcase> {
+        let channel = read(part: part)
+        
+        return storage.db.eventLoop.makeFutureWithTask {
+            var res = ByteBuffer()
+            for try await var chunk in channel {
+                res.writeBuffer(&chunk)
+            }
+            return res
+        }.withError(File.Errcase.readFileFailed)
+    }
+    
+    func readChunks(part: ReadPart, _ callback: @escaping @Sendable (ByteBuffer) async throws -> ()) -> EventLoopRes<Void, File.Errcase> {
+        let channel = read(part: part)
+        
+        return storage.db.eventLoop.makeFutureWithTask {
+            for try await chunk in channel {
+                try await callback(chunk)
+            }
+        }.withError(File.Errcase.readFileFailed)
     }
 }
 
@@ -52,11 +84,11 @@ enum PartIntersectionResult {
 
 extension __FileReader {
     // 带有 back pressure 机制地从加密文件中按指定的块读取数据并解密
-    func backPressureRead(part: ReadPart, reader: AsyncThrowingChannel<ByteBuffer, Error>) async throws(BscError<File.Errcase>) {
+    func backPressureRead(part readPart: ReadPart, reader: AsyncThrowingChannel<ByteBuffer, Error>) async throws(BscError<File.Errcase>) {
         // 准备读取的范围
         let readRange: Range<Int64>
         
-        switch part {
+        switch readPart {
         case .all:
             readRange = 0..<fileCrypto.encryptedSize
         case .closedRange(let r):
@@ -79,72 +111,101 @@ extension __FileReader {
         }
         
         for (i, part) in fileParts.enumerated() {
-            let partLength = part.encryptedEnd - part.encryptedStart - 1
+            let partLength = part.byteEnd - part.byteStart
+            let partEncryptedLength = part.encryptedEnd - part.encryptedStart
             
             let headIntersectionResult: PartIntersectionResult
             let tailIntersectionResult: PartIntersectionResult
             
             if i == 0 {
-                headIntersectionResult = .intersection(
-                    try required(throws: File.Errcase.readFileFailed, "头指针落点分析失败，\(filePath)") {
-                        try ChunkHelpers.index(
-                            readRange.lowerBound - part.encryptedStart,
-                            in: .init(.chunk(fileCrypto.chunkSize + Crypto.Symm.Stream.cipherExtraLength, total: partLength)),
-                            offset: Crypto.Symm.Stream.cipherExtraLength
-                        )
-                    }
-                )
+                let res = try required(throws: File.Errcase.readFileFailed, "头指针落点分析失败，\(filePath)") {
+                    try ChunkHelpers.index(
+                        readRange.lowerBound - part.byteStart,
+                        in: .init(.chunk(fileCrypto.chunkSize, total: partLength)),
+                        offset: Crypto.Symm.Stream.cipherExtraLength
+                    )
+                }
+                headIntersectionResult = res.chunkBegin == 0 ? .all : .intersection(res)
             } else {
                 headIntersectionResult = .all
             }
             
             if i == fileParts.count - 1 {
-                tailIntersectionResult = .intersection(
-                    try required(throws: File.Errcase.readFileFailed, "尾指针落点分析失败，\(filePath)") {
-                        try ChunkHelpers.index(
-                            readRange.upperBound - part.encryptedStart,
-                            in: .init(.chunk(fileCrypto.chunkSize + Crypto.Symm.Stream.cipherExtraLength, total: partLength)),
-                            offset: Crypto.Symm.Stream.cipherExtraLength
-                        )
-                    }
-                )
+                let res = try required(throws: File.Errcase.readFileFailed, "尾指针落点分析失败，\(filePath)") {
+                    try ChunkHelpers.index(
+                        readRange.upperBound - part.byteStart,
+                        in: .init(.chunk(fileCrypto.chunkSize, total: partLength)),
+                        offset: Crypto.Symm.Stream.cipherExtraLength
+                    )
+                }
+                tailIntersectionResult = res.chunks.count == 0 ? .all : .intersection(res)
             } else {
                 tailIntersectionResult = .all
             }
             
+            let chunkReadStartOffset: Int64
+            let chunkReadEnd: Int64
+            let tagStart: Int
+            
+            switch headIntersectionResult {
+            case .all:
+                chunkReadStartOffset = 0
+                tagStart = part.tagStart
+            case .intersection(let intersect):
+                chunkReadStartOffset = intersect.chunkBegin
+                tagStart = part.tagStart + intersect.chunkIndex
+            }
+            
+            switch tailIntersectionResult {
+            case .all:
+                chunkReadEnd = part.encryptedEnd
+            case .intersection(let intersect):
+                chunkReadEnd = part.encryptedStart + intersect.chunkBegin + (intersect.rangeInIntersection ? 0 : intersect.chunks.first!)
+            }
+            
             let chunks = fileReadHandler.readChunks(
-                in: part.encryptedRange,
+                in: part.encryptedStart + chunkReadStartOffset..<chunkReadEnd,
                 chunkLength: .bytes(fileCrypto.chunkSize + Crypto.Symm.Stream.cipherExtraLength)
             )
 
+            let curReadingPartEncryptedLength = chunkReadEnd - part.encryptedStart - chunkReadStartOffset
+            
             try await required(throws: File.Errcase.readFileFailed, "未知错误，\(filePath) in \(fileRealPath)") {
-
                 var curPartSize = 0
+                var curEncryptedSize = chunkReadStartOffset
                 var curChunkIndex = 0
                 for try await chunk in chunks {
                     
-                    var data: ByteBuffer = try Crypto.Symm.Stream.decrypt(chunk.data, key: key, chunkTag: part.tagStart + curChunkIndex).get()
+                    let first = curPartSize == 0
+                    curPartSize += chunk.readableBytes
+                    let last = curPartSize == curReadingPartEncryptedLength
                     
-                    if curPartSize == 0 {
+                    var data: ByteBuffer = try Crypto.Symm.Stream.decrypt(chunk.data, key: key, chunkTag: tagStart + curChunkIndex).get()
+                    
+                    if curEncryptedSize == 0 {
                         data.moveReaderIndex(forwardBy: Int(part.byteHeadIgnore))
                     }
                     
-                    if curPartSize + data.readableBytes >= partLength {
+                    curEncryptedSize += Int64(chunk.readableBytes)
+                    
+                    if curEncryptedSize == partEncryptedLength {
                         data.moveWriterIndex(to: data.writerIndex - Int(part.byteTailIgnore))
                     }
                     
-                    curPartSize += data.readableBytes
-                    
-                    switch tailIntersectionResult {
-                    case .all: break
-                    case .intersection(let tailIntersection):
-                        data.moveWriterIndex(to: data.readerIndex + Int(tailIntersection.chunkBegin + tailIntersection.rangeOffset))
+                    if last {
+                        switch tailIntersectionResult {
+                        case .all: break
+                        case .intersection(let tailIntersection):
+                            data.moveWriterIndex(to: data.readerIndex + Int(tailIntersection.rangeOffset))
+                        }
                     }
                     
-                    switch headIntersectionResult {
-                    case .all: break
-                    case .intersection(let headIntersection):
-                        data.moveReaderIndex(forwardBy: Int(headIntersection.chunkBegin + headIntersection.rangeOffset))
+                    if first {
+                        switch headIntersectionResult {
+                        case .all: break
+                        case .intersection(let headIntersection):
+                            data.moveReaderIndex(forwardBy: Int(headIntersection.rangeOffset))
+                        }
                     }
                     
                     await reader.send(data)

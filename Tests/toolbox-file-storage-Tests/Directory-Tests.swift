@@ -263,6 +263,6 @@ struct DirectoryTests {
     @MainActor
     @Test("测试结束")
     func end() async throws {
-        TestingShared.testStage = .file
+        TestingShared.testStage = .fileAppending
     }
 }

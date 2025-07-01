@@ -22,6 +22,7 @@ public extension FileStorage {
         case renameDirectoryFailed = "重命名目录失败"
         case moveDirectoryFailed = "移动目录失败"
         case emptyDirectoryFailed = "清空目录失败"
+        case fetchDirectorySizeFailed = "计算目录大小失败"
         
         // 文件相关错误
         case createFileFailed = "文件创建失败"

@@ -58,6 +58,17 @@ public extension Directory {
         }
     }
     
+    func getSize() -> EventLoopRes<Int64, FileStorage.Errcase> {
+        subitems().wrapped
+            .flatMapEach(on: storage.eventLoop) {
+                $0.getSize().wrapped
+            }
+            .withError(Errcase.fetchDirectorySizeFailed)
+            .map { sizes in
+                sizes.reduce(0, +)
+            }
+    }
+    
     func subitems(withDeleted: Bool = false) -> EventLoopRes<[any StorageEntry], Errcase> {
         
         let r: QueryBuilder<FileIndex>

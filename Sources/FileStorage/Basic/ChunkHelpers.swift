@@ -84,6 +84,17 @@ extension ChunkHelpers {
             guard total >= range.lowerBound, 0 <= range.lowerBound else { throw .init(.rangeBeginIndexNotFound, "预期的最大起始边界为 \(total)，却得到 \(range.lowerBound)") }
             guard total >= range.upperBound, 0 <= range.upperBound else { throw .init(.rangeSizeExceed, "预期的结束边界为 \(total)，却得到 \(range.upperBound)") }
             
+            if range.lowerBound == total {
+                // 表示起点正好在结束位置，表示追加
+                return .init(
+                    rangeOffset: 0,
+                    rangeInIntersection: true,
+                    chunkIndex: chunks.count,
+                    chunkBegin: total + offset * Int64(chunks.count),
+                    chunks: []
+                )
+            }
+            
             let chunkIndex = Int(range.lowerBound / chunkSize)
             let prefixChunkSize = chunks.sum(in: 0..<chunkIndex)
             let rangeOffset = range.lowerBound - prefixChunkSize
@@ -95,12 +106,12 @@ extension ChunkHelpers {
                     rangeInIntersection: rangeOffset == 0,
                     chunkIndex: chunkIndex,
                     chunkBegin: chunkBegin,
-                    chunks: [chunks[chunkIndex + 1] + offset]
+                    chunks: [chunks[chunkIndex] + offset]
                 )
             }
             
-            let chunkEndIndex = Int((range.upperBound - 1) / chunkSize)
-            let chunkTotalLength = chunks.sum(in: chunkIndex...chunkEndIndex) + Int64(chunkEndIndex - chunkIndex + 1) * offset
+            let chunkEndIndex = Int(ceilf(Float(range.upperBound) / Float(chunkSize)))
+            let chunkTotalLength = chunks.sum(in: chunkIndex..<chunkEndIndex) + Int64(chunkEndIndex - chunkIndex) * offset
             
             return .init(
                 rangeOffset: rangeOffset,
@@ -115,18 +126,16 @@ extension ChunkHelpers {
         var record = false
         var curChunkIndex: Int64 = 0
         var rangeBegin: Int64 = -1
-        var chunkBegin: Int64 = -1
-        var chunkIndex = -1
+        var chunkBegin: Int64 = 0
+        var chunkIndex = 0
         var rangeInIntersection = false
-        for (i, chunk) in chunks.enumerated() {
+        for chunk in chunks {
             
             let curChunkRange = curChunkIndex..<(curChunkIndex + chunk)
             
             if curChunkRange.contains(range.lowerBound) {
                 // 开始记录
                 rangeBegin = range.lowerBound - curChunkRange.lowerBound
-                chunkBegin = curChunkRange.lowerBound + Int64(i) * offset
-                chunkIndex = i
                 
                 if range.isEmpty {
                     // 如果 range 是空的，在此处退出，保证 rangeBegin, chunkBegin 与 chunks 正确设置
@@ -149,12 +158,34 @@ extension ChunkHelpers {
             if !range.isEmpty && curChunkRange.contains(range.upperBound - 1) { record = false; break }
             
             curChunkIndex += chunk
+            if !record {
+                chunkIndex += 1
+                chunkBegin += chunk + offset
+            }
         }
         
         guard record == false else { throw .init(.rangeSizeExceed, "预期的结束边界为 \(chunks.reduce(0, +))，却得到 \(range.upperBound)") }
+        
+        if rangeBegin == -1 && curChunkIndex == range.lowerBound && range.isEmpty {
+            // 表示起点正好在结束位置，表示追加
+            return .init(
+                rangeOffset: 0,
+                rangeInIntersection: true,
+                chunkIndex: chunks.count,
+                chunkBegin: chunkBegin,
+                chunks: []
+            )
+        }
+        
         guard rangeBegin != -1 else { throw .init(.rangeBeginIndexNotFound, "预期的最大起始边界为 \(chunks.reduce(0, +))，却得到 \(range.lowerBound)") }
         
-        return .init(rangeOffset: rangeBegin, rangeInIntersection: rangeInIntersection, chunkIndex: chunkIndex, chunkBegin: chunkBegin, chunks: .init(.array(res)))
+        return .init(
+            rangeOffset: rangeBegin,
+            rangeInIntersection: rangeInIntersection,
+            chunkIndex: chunkIndex,
+            chunkBegin: chunkBegin,
+            chunks: .init(.array(res))
+        )
     }
     
     /// 数据落点分析算法
@@ -628,7 +659,7 @@ extension BufferSpace: Collection {
         case .array(let buffers): return buffers[position]
         case .buffers(let buffers): return Int64(buffers[position].readableBytes)
         case .chunk(let chunkSize, total: let total):
-            guard position < self.count else { fatalError("Buffer 读取越界，总长度为 \(self.count)，却尝试取得索引 \(position)") }
+            precondition(position < self.count, "Buffer 读取越界，总长度为 \(self.count)，却尝试取得索引 \(position)")
             if position == self.count - 1 {
                 let last = total % chunkSize
                 return last == 0 ? chunkSize : last

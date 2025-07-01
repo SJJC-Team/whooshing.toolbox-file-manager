@@ -12,7 +12,8 @@ struct TestingShared {
     enum TestStage {
         case entryBasics
         case directory
-        case file
+        case fileAppending
+        case fileRemoving
     }
     
     static let Key = Crypto.Symm.Key(data: Data(base64Encoded: KeyStr)!)

@@ -11,7 +11,6 @@ import NIOAdvanced
 public typealias FileReadWriter = FileReader & FileWriter
 
 public struct File: StorageEntry, Sendable {
-    
     public let id: UUID
     public let name: String
     public let mimeType: MimeType
@@ -48,37 +47,46 @@ public struct File: StorageEntry, Sendable {
 }
 
 public extension File {
-    func withReader<T, G>(_ action: (FileReader) -> EventLoopResult<T, G>) async -> Res<T, Errcase> where T: Sendable {
-        do {
+    func withReader<T, G>(_ action: @escaping @Sendable (FileReader) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
+        storage.eventLoop.makeFutureWithTask {
             let reader = try await openForRead().get()
-            let res = try await action(reader).get()
-            try await reader.close()
-            return .success(res)
-        } catch {
-            return .failure(Errcase.openFileFailed, subErr: error)
-        }
+            do {
+                let res = try await action(reader).get()
+                try await reader.close()
+                return res
+            } catch {
+                try? await reader.close()
+                throw error
+            }
+        }.withError(Errcase.openFileFailed)
     }
     
-    func withWriter<T, G>(_ action: (FileWriter) -> EventLoopResult<T, G>) async -> Res<T, Errcase> where T: Sendable {
-        do {
+    func withWriter<T, G>(_ action: @escaping @Sendable (FileWriter) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
+        storage.eventLoop.makeFutureWithTask {
             let writer = try await openForWrite().get()
-            let res = try await action(writer).get()
-            try await writer.close()
-            return .success(res)
-        } catch {
-            return .failure(Errcase.openFileFailed, subErr: error)
-        }
+            do {
+                let res = try await action(writer).get()
+                try await writer.close()
+                return res
+            } catch {
+                try? await writer.close()
+                throw error
+            }
+        }.withError(Errcase.openFileFailed)
     }
     
-    func withReadWriter<T, G>(_ action: (FileReadWriter) -> EventLoopResult<T, G>) async -> Res<T, Errcase> where T: Sendable {
-        do {
+    func withReadWriter<T, G>(_ action: @escaping @Sendable (FileReadWriter) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
+        storage.eventLoop.makeFutureWithTask {
             let readWriter = try await openForReadAndWrite().get()
-            let res = try await action(readWriter).get()
-            try await readWriter.close()
-            return .success(res)
-        } catch {
-            return .failure(Errcase.openFileFailed, subErr: error)
-        }
+            do {
+                let res = try await action(readWriter).get()
+                try await readWriter.close()
+                return res
+            } catch {
+                try? await readWriter.close()
+                throw error
+            }
+        }.withError(Errcase.openFileFailed)
     }
 }
 
@@ -152,6 +160,10 @@ public extension File {
     
     func isExist() async -> Bool {
         (try? await FileIndex.query(on: storage.indexDatabase).filter(\.$id == id).first()) != nil
+    }
+    
+    func getSize() -> EventLoopRes<Int64, FileStorage.Errcase> {
+        storage.eventLoop.makeSucceededResult(size)
     }
     
     func delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {

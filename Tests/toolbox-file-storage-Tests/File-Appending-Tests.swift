@@ -1,0 +1,225 @@
+import Testing
+import ErrorHandle
+import NIOFileSystem
+import Foundation
+import FluentKit
+import Cryptos
+@testable import FileStorage
+
+@Suite("File 追加测试集", .serialized)
+struct FileAppendingTests {
+    @Test("开始测试")
+    func start() async throws {
+        while await TestingShared.testStage != .fileAppending {
+            sleep(1)
+        }
+    }
+    
+    static let fileList: [(StoragePath, Int64, Int64, Int64)] = [
+        (
+            file: "example-1.txt",
+            chunkSize: 12343,
+            firstInsert: 65535 * 5,
+            appendWrite: 2000
+        ),
+        (
+            file: "example-2.txt",
+            chunkSize: 2000,
+            firstInsert: 2000 * 5,
+            appendWrite: 15213
+        ),
+        (
+            file: "example-3.txt",
+            chunkSize: 30000,
+            firstInsert: 1,
+            appendWrite: 200
+        )
+    ]
+    
+    @Test("文件创建", arguments: fileList.map { ($0.0, $0.1) })
+    func createFileTest(path: StoragePath, chunkSize: Int64) async throws {
+        let storage = try await TestingShared.getFileStorage()
+        
+        let file = try await storage.createFile(at: path, chunkSize: chunkSize).get()
+        
+        #expect(file.name == path.last!)
+        #expect(file.mimeType == .plain)
+        #expect(file.path == path)
+        #expect(file.size == 0)
+        
+        let fileCrypto = try #require(
+            try await FileCrypto.query(on: storage.db)
+                .filter(\.$id == file.id)
+                .first()
+        )
+        
+        #expect(fileCrypto.chunkSize == chunkSize)
+        
+        let fileTest = try await storage.getFile(at: path).get()
+        
+        #expect(file.id == fileTest.id)
+        #expect(file.name == fileTest.name)
+        #expect(file.mimeType == fileTest.mimeType)
+        #expect(file.path == fileTest.path)
+        #expect(file.size == fileTest.size)
+    }
+    
+    @Test("文件写入测试", arguments: fileList.map { ($0.0, $0.1, $0.2) })
+    func fileWriteTest(path: StoragePath, chunkSize: Int64, dataSize: Int64) async throws {
+        let storage = try await TestingShared.getFileStorage()
+        
+        let file = try await storage.getFile(at: path).get()
+        
+        let testData = randomData(size: Int(dataSize))
+        
+        try await file.withWriter { writer in
+            writer.insert(at: .begin(), bytes: testData)
+        }.get()
+        
+        let fileCrypto = try #require(
+            try await FileCrypto.query(on: storage.db)
+                .filter(\.$id == file.id)
+                .first()
+        )
+        
+        #expect(fileCrypto.chunkSize == chunkSize)
+        #expect(fileCrypto.lastTag == dataSize / chunkSize + ((dataSize % chunkSize == 0) ? 0 : 1))
+        #expect(fileCrypto.encryptedSize == dataSize + Int64(fileCrypto.lastTag) * (Crypto.Symm.Stream.cipherExtraLength))
+        
+        let data = try await file.withReader { reader in
+            reader.readData(part: .range(0..<dataSize))
+        }.get()
+        
+        #expect(data == testData)
+        
+        let readRange = (dataSize / 2)..<(dataSize * 2 / 3)
+        
+        let data2 = try await file.withReader { reader in
+            reader.readData(part: .range(readRange))
+        }.get()
+        
+        #expect(data2 == testData.getSlice(at: Int(readRange.lowerBound), length: Int(readRange.upperBound - readRange.lowerBound)))
+    }
+    
+    @Test("写指针非法写入测试", arguments: [
+        (true, 1, 1),
+        (false, -1, -1),
+        (false, 1000000, 10000000),
+        (false, -10000000, -110000000),
+        (false, Int64.min, Int64.min),
+        (false, Int64.max, Int64.max)
+    ])
+    func writeIllegalTest(makeNew: Bool, begin: Int64, end: Int64) async throws {
+        let storage = try await TestingShared.getFileStorage()
+        
+        let path: StoragePath = "shouldFail.gz"
+        let chunkSize: Int64 = 300
+        
+        let file: File
+        if makeNew {
+            file = try await storage.createFile(at: path, chunkSize: chunkSize).get()
+        } else {
+            file = try await storage.getFile(at: path).get()
+        }
+        
+        #expect(file.mimeType == .gzip)
+        
+        await #expect(throws: BscError<File.Errcase>.self) {
+            try await file.withWriter { writer in
+                writer.insert(at: .begin(of: -1), bytes: randomData(size: 1000))
+            }.get()
+        }
+        
+        await #expect(throws: BscError<File.Errcase>.self) {
+            try await file.withWriter { writer in
+                writer.insert(at: .end(of: -1), bytes: randomData(size: 1000))
+            }.get()
+        }
+    }
+    
+    @Test("文件追加测试", arguments: fileList.map { ($0.0, $0.3) })
+    func fileAppendWriteTest(path: StoragePath, dataSize: Int64) async throws {
+        let storage = try await TestingShared.getFileStorage()
+        
+        let file = try await storage.getFile(at: path).get()
+        
+        let testData = randomData(size: Int(dataSize))
+        
+        var fileCrypto = try #require(
+            try await FileCrypto.query(on: storage.db)
+                .filter(\.$id == file.id)
+                .first()
+        )
+        
+        let originSize = fileCrypto.encryptedSize
+        let lastTag = fileCrypto.lastTag
+        let byteOriginSize = originSize - (Crypto.Symm.Stream.cipherExtraLength * Int64(lastTag))
+        
+        try await file.withWriter { writer in
+            writer.insert(at: .end(), bytes: testData)
+        }.get()
+        
+        fileCrypto = try #require(
+            try await FileCrypto.query(on: storage.db)
+                .filter(\.$id == file.id)
+                .first()
+        )
+        
+        #expect(fileCrypto.lastTag == lastTag + Int(dataSize / fileCrypto.chunkSize + ((dataSize % fileCrypto.chunkSize == 0) ? 0 : 1)))
+        #expect(fileCrypto.encryptedSize == originSize + dataSize + Int64(fileCrypto.lastTag - lastTag) * (Crypto.Symm.Stream.cipherExtraLength))
+        
+        let fileParts = try await FilePart.query(on: storage.db)
+            .filter(\.$fileIndex.$id == file.id)
+            .all()
+        
+        #expect(fileParts.count == 2)
+        #expect(fileParts[0].byteStart == 0)
+        #expect(fileParts[0].byteEnd == byteOriginSize)
+        #expect(fileParts[1].byteStart == byteOriginSize)
+        #expect(fileParts[1].byteEnd == byteOriginSize + dataSize)
+        
+        #expect(fileParts[0].encryptedStart == 0)
+        #expect(fileParts[0].encryptedEnd == originSize)
+        #expect(fileParts[1].encryptedStart == originSize)
+        #expect(fileParts[1].encryptedEnd == originSize + dataSize + Int64(fileCrypto.lastTag - lastTag) * (Crypto.Symm.Stream.cipherExtraLength))
+    }
+    
+    @Test("从主目录删除所有子文件夹和子文件")
+    func emptyAllTest() async throws {
+        let storage = try await TestingShared.getFileStorage()
+        
+        try await storage.rootDir.empty(force: true).get()
+    }
+    
+    @Test("数据库和文件系统中的数据应当为空")
+    func emptyTest() async throws {
+        let storage = try await TestingShared.getFileStorage()
+        
+        let dir = try await FileSystem.shared.openDirectory(atPath: .init(storage.storagePath))
+        
+        var pass = true
+        do {
+            for try await entry in dir.listContents() {
+                if let last = entry.path.lastComponent, last.string.hasPrefix(".") {
+                    continue
+                }
+                pass = false
+                break
+            }
+            try await dir.close()
+        } catch {
+            try await dir.close()
+        }
+        
+        #expect(pass)
+        #expect(try await FileIndex.query(on: storage.db).withDeleted().all().count == 0)
+        #expect(try await FileCrypto.query(on: storage.db).withDeleted().all().count == 0)
+        #expect(try await FilePart.query(on: storage.db).withDeleted().all().count == 0)
+    }
+    
+    @MainActor
+    @Test("测试结束")
+    func end() async throws {
+        TestingShared.testStage = .fileRemoving
+    }
+}
