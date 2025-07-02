@@ -89,9 +89,9 @@ extension __FileWriter {
     }
     
     func insert(at index: ByteIndex, from channel: AsyncThrowingChannel<ByteBuffer, Error>) -> EventLoopResult<Void, BscError<File.Errcase>> {
-        let insertIndex = index.index(fileSize: fileCrypto.encryptedSize)
+        let insertIndex = index.index(fileSize: fileIndex.size!)
         return storage.db.eventLoop.makeResultWithTask { () throws(BscError<File.Errcase>) in
-            try await backPressureInsert(at: insertIndex, from: channel)
+            try await backPressureInsert(at: insertIndex, from: channel, removeLater: false)
         }.flatMap { _, dbOperation in
             storage.db.trans { db in
                 dbOperation(db)
@@ -100,14 +100,14 @@ extension __FileWriter {
     }
     
     func replace(at index: ByteIndex, from channel: AsyncThrowingChannel<ByteBuffer, Error>) -> EventLoopResult<Void, BscError<File.Errcase>> {
-        let insertIndex = index.index(fileSize: fileCrypto.encryptedSize)
+        let insertIndex = index.index(fileSize: fileIndex.size!)
         return storage.db.eventLoop.makeResultWithTask { () throws(BscError<File.Errcase>) in
-            let op1 = try await backPressureInsert(at: insertIndex, from: channel)
-            let op2 = try await removeBytes(in: insertIndex..<(insertIndex + op1.appendRes.readBytes))
+            let op1 = try await backPressureInsert(at: insertIndex, from: channel, removeLater: true)
+            let op2 = try await removeBytes(in: insertIndex..<(min(insertIndex + op1.appendRes.readBytes, fileIndex.size!)), willInsertNext: true)
             return (op1.appendRes, op1.dbOperation, op2)
         }.flatMap { appendRes, op1, op2 in
             let composedOp: @Sendable (FileStorage.PGDatabase) -> EventLoopResult<Void, BscError<File.Errcase>> = { db in
-                op1(db).flatMap { _ in op2(db) }
+                op2(db).flatMap { _ in op1(db) }
             }
             return storage.db.trans { db in composedOp(db) }
         }
@@ -115,7 +115,7 @@ extension __FileWriter {
     
     func remove(in range: Range<Int64>) -> EventLoopResult<Void, BscError<File.Errcase>> {
         storage.db.eventLoop.makeResultWithTask { () throws(BscError<File.Errcase>) in
-            try await removeBytes(in: range)
+            try await removeBytes(in: range, willInsertNext: false)
         }.flatMap { dbOperation in
             storage.db.trans { db in
                 dbOperation(db)
@@ -148,7 +148,8 @@ extension __FileWriter {
     /// 该函数会进行数据写入，但不会更新数据库中的指针位置，数据库操作将会作为返回值返回，需要调用者自行执行数据库操作
     func backPressureInsert(
         at byteStartIndex: Int64,
-        from channel: AsyncThrowingChannel<ByteBuffer, Error>
+        from channel: AsyncThrowingChannel<ByteBuffer, Error>,
+        removeLater: Bool
     ) async throws(BscError<File.Errcase>) -> (
         appendRes: DataAppendingResult,
         dbOperation: @Sendable (FileStorage.PGDatabase) -> EventLoopRes<Void, File.Errcase>
@@ -162,13 +163,17 @@ extension __FileWriter {
             try await appendChannelDataAndEncryptToFile(fileWriteHandler, tagStart: fileCrypto.lastTag, channel: channel)
         }
         
+        guard appendRes.readBytes > 0 else {
+            return (appendRes, { $0.eventLoop.makeSucceededVoidResult() })
+        }
+        
         let fileId = try required(throws: File.Errcase.writeFileFailed, "获取文件 ID 失败") {
             try fileIndex.requireID()
         }
         
         let separateTask: @Sendable (FileStorage.PGDatabase) -> EventLoopFuture<Void>
         
-        if byteStartIndex == fileCrypto.encryptedSize {
+        if byteStartIndex == fileIndex.size! {
             // 追加到文件最后
             // 查询最后一个 filePart 记录，以用于追加
             // 若 last 不存在，则表示该文件是空的
@@ -188,8 +193,8 @@ extension __FileWriter {
                 byteEnd: (last?.byteEnd ?? 0) + appendRes.readBytes,
                 byteHeadIgnore: 0,
                 byteTailIgnore: 0,
-                encryptedStart: fileCrypto.encryptedSize,
-                encryptedEnd: fileCrypto.encryptedSize + appendRes.writtenBytes
+                encryptedStart: appendRes.lastEncryptedSize,
+                encryptedEnd: appendRes.lastEncryptedSize + appendRes.writtenBytes
             )
             
             separateTask = { db in
@@ -208,17 +213,39 @@ extension __FileWriter {
             
             switch separateResult {
             case .noNeed(part: let part):
-                // 无需分割
-                __task = { $0.eventLoop.makeSucceededVoidFuture() }
                 markPart = part
+                // 无需分割
+                __task = { db in
+                    if removeLater {
+                        return db.eventLoop.makeSucceededVoidFuture()
+                    }
+                    // 更新该插入点之后的所有数据库记录，使其均向后偏移该插入的字节量
+                    return appendRemainingPart(
+                        with: appendRes.readBytes,
+                        greaterEqualThan: markPart.byteStart,
+                        in: db,
+                        fileId: fileId
+                    )
+                }
             case .separated(left: let left, right: let right):
+                markPart = right
                 // 需要分割，将新割出的插入到数据库中，并更新被割出的原 Part
                 __task = { db in
-                    left.save(on: db).flatMap {
+                    if removeLater {
+                        return db.eventLoop.makeSucceededVoidFuture()
+                    }
+                    return left.save(on: db).flatMap {
                         right.update(on: db)
+                    }.flatMap {
+                        // 更新该插入点之后的所有数据库记录，使其均向后偏移该插入的字节量
+                        appendRemainingPart(
+                            with: appendRes.readBytes,
+                            greaterEqualThan: markPart.byteStart,
+                            in: db,
+                            fileId: fileId
+                        )
                     }
                 }
-                markPart = right
             }
             
             let fileId = try required(throws: File.Errcase.writeFileFailed, "获取文件 ID 失败，\(filePath)") {
@@ -228,25 +255,17 @@ extension __FileWriter {
             // 将数据库查询任务记录在一个闭包中，目前不执行，在最后使用 transaction 执行确保原子性
             separateTask = { db in
                 __task(db).flatMap {
-                    // 更新该插入点之后的所有数据库记录，使其均向后偏移该插入的字节量
-                    appendRemainingPart(
-                        with: appendRes.readBytes,
-                        greaterEqualThan: markPart.byteStart,
-                        in: db,
-                        fileId: fileId
-                    ).flatMap {
-                        // 插入新的 FilePart 到数据库中
-                        FilePart(
-                            fileIndexId: fileId,
-                            tagStart: fileCrypto.lastTag,
-                            byteStart: markPart.byteStart,
-                            byteEnd: markPart.byteStart + appendRes.readBytes,
-                            byteHeadIgnore: markPart.byteHeadIgnore,
-                            byteTailIgnore: 0,
-                            encryptedStart: fileCrypto.encryptedSize,
-                            encryptedEnd: fileCrypto.encryptedSize + appendRes.writtenBytes
-                        ).save(on: db)
-                    }
+                    // 插入新的 FilePart 到数据库中
+                    FilePart(
+                        fileIndexId: fileId,
+                        tagStart: fileCrypto.lastTag,
+                        byteStart: markPart.byteStart,
+                        byteEnd: markPart.byteStart + appendRes.readBytes,
+                        byteHeadIgnore: 0,
+                        byteTailIgnore: 0,
+                        encryptedStart: appendRes.lastEncryptedSize,
+                        encryptedEnd: appendRes.lastEncryptedSize + appendRes.writtenBytes
+                    ).save(on: db)
                 }
             }
         }
@@ -260,7 +279,7 @@ extension __FileWriter {
                     fileCrypto.encryptedSize += appendRes.writtenBytes
                     return fileCrypto.update(on: db).flatMap {
                         fileIndex.size = fileIndex.size! + appendRes.readBytes
-                        return fileIndex.save(on: db)
+                        return fileIndex.update(on: db)
                     }
                 }.withError(File.Errcase.writeFileFailed, "数据库操作失败，\(filePath)")
             }
@@ -270,7 +289,8 @@ extension __FileWriter {
     /// 从文件中移除某个区间的字节数据。
     /// 该函数不会进行任何文件系统操作，也不会更新数据库中的指针位置，数据库操作将会作为返回值返回，需要调用者自行执行数据库操作
     func removeBytes(
-        in range: Range<Int64>
+        in range: Range<Int64>,
+        willInsertNext: Bool
     ) async throws(BscError<File.Errcase>) -> (@Sendable (FileStorage.PGDatabase) -> EventLoopRes<Void, File.Errcase>) {
         guard
             range.lowerBound <= fileCrypto.encryptedSize,
@@ -285,7 +305,7 @@ extension __FileWriter {
         
         let removingBytes = range.upperBound - range.lowerBound
         
-        let task = try await __removeBytes(in: range)
+        let task = try await __removeBytes(in: range, willInsertNext: willInsertNext)
         
         return { db in
             task(db).flatMap {
@@ -303,10 +323,10 @@ extension __FileWriter {
  
 extension __FileWriter {
     func __removeBytes(
-        in range: Range<Int64>
+        in range: Range<Int64>,
+        willInsertNext: Bool
     ) async throws(BscError<File.Errcase>) -> @Sendable (FileStorage.PGDatabase) -> EventLoopFuture<Void> {
         let removingBytes = range.upperBound - range.lowerBound
-        
         let (lowerBoundSepResult, upperBoundSepResult) = try await required(throws: File.Errcase.removeFileDataFailed, "文件块分割失败，\(filePath)") {
             (
                 // 以 lowerBound 对影响块进行分割
@@ -353,10 +373,6 @@ extension __FileWriter {
                     .filter(\.$byteStart >= lowerRight.byteStart)
                     .delete()
                 .flatMap {
-//                    FilePart.query(on: db)
-//                        .filter(\.$fileIndex.$id == fileId)
-//                        .filter(\.$byteStart == lowerLeft.byteStart)
-//                        .delete()
                     lowerRight.delete(on: db)
                 }.flatMap {
                     lowerLeft.save(on: db)
@@ -379,7 +395,10 @@ extension __FileWriter {
                     .filter(\.$byteStart < upperPart.byteStart)
                     .delete()
                 .flatMap {
-                    appendRemainingPart(
+                    if willInsertNext {
+                        return db.eventLoop.makeSucceededVoidFuture()
+                    }
+                    return appendRemainingPart(
                         with: -removingBytes,
                         greaterEqualThan: upperPart.byteStart,
                         in: db,
@@ -406,7 +425,10 @@ extension __FileWriter {
                 
                 task = { db in
                     upperRight.update(on: db).flatMap {
-                        appendRemainingPart(
+                        if willInsertNext {
+                            return db.eventLoop.makeSucceededVoidFuture()
+                        }
+                        return appendRemainingPart(
                             with: -removingBytes,
                             greaterEqualThan: upperRight.byteStart,
                             in: db,
@@ -434,7 +456,10 @@ extension __FileWriter {
                     .flatMap {
                         upperRight.update(on: db)
                     }.flatMap {
-                        appendRemainingPart(
+                        if willInsertNext {
+                            return db.eventLoop.makeSucceededVoidFuture()
+                        }
+                        return appendRemainingPart(
                             with: -removingBytes,
                             greaterEqualThan: upperRight.byteStart,
                             in: db,
@@ -461,15 +486,14 @@ extension __FileWriter {
                     .filter(\.$byteStart < upperPart.byteStart)
                     .delete()
                 .flatMap {
-//                    FilePart.query(on: db)
-//                        .filter(\.$fileIndex.$id == fileId)
-//                        .filter(\.$byteStart == lowerLeft.byteStart)
-//                        .delete()
                     lowerRight.delete(on: db)
                 }.flatMap {
                     lowerLeft.save(on: db)
                 }.flatMap {
-                    appendRemainingPart(
+                    if willInsertNext {
+                        return db.eventLoop.makeSucceededVoidFuture()
+                    }
+                    return appendRemainingPart(
                         with: -removingBytes,
                         greaterEqualThan: upperPart.byteStart,
                         in: db,
@@ -499,7 +523,10 @@ extension __FileWriter {
                     lowerLeft.save(on: db).flatMap {
                         upperRight.update(on: db)
                     }.flatMap {
-                        appendRemainingPart(
+                        if willInsertNext {
+                            return db.eventLoop.makeSucceededVoidFuture()
+                        }
+                        return appendRemainingPart(
                             with: -removingBytes,
                             greaterEqualThan: upperRight.byteStart,
                             in: db,
@@ -532,7 +559,10 @@ extension __FileWriter {
                     }.flatMap {
                         upperRight.update(on: db)
                     }.flatMap {
-                        appendRemainingPart(
+                        if willInsertNext {
+                            return db.eventLoop.makeSucceededVoidFuture()
+                        }
+                        return appendRemainingPart(
                             with: -removingBytes,
                             greaterEqualThan: upperRight.byteStart,
                             in: db,
@@ -550,12 +580,14 @@ extension __FileWriter {
 struct DataAppendingResult {
     let readBytes: Int64
     let writtenBytes: Int64
+    let lastEncryptedSize: Int64
     let lastTag: Int
     
-    init(_ readBytes: Int64, _ writtenBytes: Int64, _ lastTag: Int) {
+    init(_ readBytes: Int64, _ writtenBytes: Int64, _ lastEncryptedSize: Int64, _ lastTag: Int) {
         self.readBytes = readBytes
         self.writtenBytes = writtenBytes
         self.lastTag = lastTag
+        self.lastEncryptedSize = lastEncryptedSize
     }
 }
 
@@ -598,14 +630,15 @@ extension __FileWriter {
             for try await chunk in channel.chunkedChannel(fileCrypto.chunkSize) {
                 // 自动将 channel 中的数据流加密写入
                 let cipher = try Crypto.Symm.Stream.encrypt(chunk, key: key, chunkTag: curTag).get()
-                try await writer.write(contentsOf: ByteBuffer(data: cipher))
+                let buffer = ByteBuffer(data: cipher)
+                try await writer.write(contentsOf: buffer)
                 try await writer.flush()
                 curTag += 1
                 writtenBytes += Int64(cipher.count)
                 readBytes += Int64(chunk.readableBytes)
             }
         }
-        return .init(readBytes, writtenBytes, curTag)
+        return .init(readBytes, writtenBytes, size, curTag)
     }
     
     /// 从数据库的层面上分割文件块，对文件系统 0 操作，且仅对数据库进行读操作，不负责更新操作
@@ -631,6 +664,10 @@ extension __FileWriter {
             // 2. 可能索引分割位置 == 总大小
             // 3. 可能是索引大小超限
             throw FileWriterError.separateFilePartFailed.d("索引超限")
+        }
+        
+        if part.byteStart - part.byteHeadIgnore == index {
+            return .noNeed(part: part)
         }
         
         let indexResult = try required(throws: FileWriterError.separateFilePartFailed, "落点判断失败") {

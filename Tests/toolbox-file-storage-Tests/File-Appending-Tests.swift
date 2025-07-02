@@ -106,6 +106,12 @@ struct FileAppendingTests {
         }.get()
         
         #expect(data2 == testData.getSlice(at: Int(readRange.lowerBound), length: Int(readRange.upperBound - readRange.lowerBound)))
+        
+        let zeroParts = try await FilePart.query(on: storage.db)
+            .filter(\.$byteStart == \.$byteEnd)
+            .all()
+        
+        #expect(zeroParts.count == 0)
     }
     
     @Test("文件夹大小计算测试")
@@ -256,6 +262,6 @@ struct FileAppendingTests {
     @MainActor
     @Test("测试结束")
     func end() async throws {
-        TestingShared.testStage = .fileRemoving
+        TestingShared.testStage = .fileInsertion
     }
 }
