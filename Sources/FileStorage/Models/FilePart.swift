@@ -20,14 +20,6 @@ final class FilePart: PGModel, @unchecked Sendable {
     
     static let fields = Fields()
     
-    var byteRange: Range<Int64> {
-        byteStart..<byteEnd
-    }
-    
-    var encryptedRange: Range<Int64> {
-        encryptedStart..<encryptedEnd
-    }
-    
     @ID(key: .id)                               var id: UUID?
     
     @Parent(fields.fileId)                      var fileIndex: FileIndex

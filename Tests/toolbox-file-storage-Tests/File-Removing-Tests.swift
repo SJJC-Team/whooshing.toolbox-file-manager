@@ -78,6 +78,62 @@ struct FileRemovingTests {
                 1000..<330000
             ]
         ),
+        (
+            file: "example-5.txt",
+            firstInsert: randomData(size: 100000),
+            chunkSize: 3000,
+            removings: [
+                3000..<7800,
+                1020..<5000
+            ]
+        ),
+        (
+            file: "example-6.txt",
+            firstInsert: randomData(size: 100000),
+            chunkSize: 3000,
+            removings: [
+                4000..<9000,
+                1234..<3122
+            ]
+        ),
+        (
+            file: "example-7.txt",
+            firstInsert: randomData(size: 100000),
+            chunkSize: 1000,
+            removings: [
+                3000..<4000,
+                0..<6050
+            ]
+        ),
+        (
+            file: "example-8.txt",
+            firstInsert: randomData(size: 100000),
+            chunkSize: 1000,
+            removings: [
+                3000..<4000,
+                5000..<6000,
+                2300..<5000
+            ]
+        ),
+        (
+            file: "example-9.txt",
+            firstInsert: randomData(size: 100000),
+            chunkSize: 1000,
+            removings: [
+                3000..<4000,
+                5000..<6000,
+                0..<5000
+            ]
+        ),
+        (
+            file: "example-10.txt",
+            firstInsert: randomData(size: 10000),
+            chunkSize: 1000,
+            removings: [
+                3000..<4000,
+                2300..<9000
+            ]
+        )
     ]
     
     @Test("文件创建", arguments: fileList.map { ($0.0, $0.2) })

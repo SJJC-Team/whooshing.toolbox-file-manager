@@ -206,8 +206,6 @@ extension ChunkHelpers {
     
     static var minChunkSize: Int64 { 8192 }
     
-    static var commonChunkSize: Int64 { 65535 }
-    
     struct ReseparationResult: Sendable, Equatable, CustomStringConvertible {
         
         enum HeadCombine: CustomStringConvertible {

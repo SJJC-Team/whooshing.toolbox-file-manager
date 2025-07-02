@@ -35,9 +35,3 @@ extension __FileContentHandler {
         }
     }
 }
-
-extension AsyncThrowingChannel where Failure == Error {
-    func castError<NewError: Error>(to _: NewError.Type) -> AsyncThrowingChannel<Element, NewError> {
-        unsafeBitCast(self, to: AsyncThrowingChannel<Element, NewError>.self)
-    }
-}
