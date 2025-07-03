@@ -26,8 +26,6 @@ struct TestingShared {
      
     static let dbListening = isTCPPortOpen(5432)
     
-    @MainActor static let Key = Crypto.Symm.Key(data: Data(base64Encoded: KeyStr)!)
-    @MainActor static let KeyStr = "Mzn/h5zDnIdi4C3yHaRMG62DhC9qYt8q4SfOCV338hY="
     @MainActor static var fileStorage: FileStorage? = nil
     @MainActor static var testStage: TestStage = .entryBasics
     
@@ -36,6 +34,9 @@ struct TestingShared {
         
         let testingStorageDir = FileStorage.resolvePath(append: "~/file_storage_testing")
         
+        let KeyStr = "Mzn/h5zDnIdi4C3yHaRMG62DhC9qYt8q4SfOCV338hY="
+        let Key = Crypto.Symm.Key(data: Data(base64Encoded: KeyStr)!)
+
         try await Task.detached {
             let dir: DirectoryFileHandle?
             do {
@@ -53,7 +54,7 @@ struct TestingShared {
             let s = try await FileStorage.new(
                 eventLoop: eventLoop,
                 storagePath: testingStorageDir,
-                indexDatabaseConfigure: .init(hostname: ProcessInfo.processInfo.environment["GITHUB_PG_TESTING_HOST"] ?? "localhost", port: 5432, username: "clwang", password: "password", database: "postgres", tls: .disable),
+                indexDatabaseConfigure: .init(hostname: ProcessInfo.processInfo.environment["GITHUB_PG_TESTING_HOST"] ?? "localhost", port: 5432, username: "woo", password: "password", database: "postgres", tls: .disable),
                 masterKey: Key,
                 logger: .init(label: "FileStorage-Testing"),
                 debuging: .init(tdeEncrypt: false)

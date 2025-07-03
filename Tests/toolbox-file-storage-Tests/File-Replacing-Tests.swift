@@ -12,7 +12,7 @@ struct FileReplacmentTests {
     @Test("开始测试")
     func start() async throws {
         while await TestingShared.testStage != .fileReplacemeng {
-            sleep(1)
+            try await Task.sleep(nanoseconds: 250_000_000)
         }
     }
     

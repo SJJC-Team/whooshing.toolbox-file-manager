@@ -23,16 +23,15 @@ struct FilePartSeparateTests {
         (
             chunkSize: Int64,
             lastTag: Int,
-            FilePartParas,
-            ChunkHelpers.IntersectionResult,
-            Result<(FilePartParas?, FilePartParas?),
-            BscError<FileWriterError>>
+            filePart: FilePartParas,
+            indexRes: ChunkHelpers.IntersectionResult,
+            expect: Result<(FilePartParas?, FilePartParas?), BscError<FileWriterError>>
         )
     ] = [
         (
             chunkSize: 65535,
             lastTag: 0,
-            (
+            filePart: (
                 tagStart: 0,
                 byteStart: 0,
                 byteEnd: 100,
@@ -41,19 +40,19 @@ struct FilePartSeparateTests {
                 encryptedStart: 0,
                 encryptedEnd: 100 + Crypto.Symm.Stream.cipherExtraLength
             ),
-            .init(
+            indexRes: .init(
                 rangeOffset: 0,
                 rangeInIntersection: true,
                 chunkIndex: 0,
                 chunkBegin: 0,
                 chunks: [100 + Crypto.Symm.Stream.cipherExtraLength]
             ),
-            .success((nil, nil))
+            expect: .success((nil, nil))
         ),
         (
             chunkSize: 10,
             lastTag: 0,
-            (
+            filePart: (
                 tagStart: 0,
                 byteStart: 0,
                 byteEnd: 10000,
@@ -62,14 +61,14 @@ struct FilePartSeparateTests {
                 encryptedStart: 0,
                 encryptedEnd: 10000 + (10000 / 10 * Crypto.Symm.Stream.cipherExtraLength)
             ),
-            .init(
+            indexRes: .init(
                 rangeOffset: 2,
                 rangeInIntersection: false,
                 chunkIndex: 20,
                 chunkBegin: (20 + Crypto.Symm.Stream.cipherExtraLength) * 10,
                 chunks: [10 + Crypto.Symm.Stream.cipherExtraLength]
             ),
-            .success((
+            expect: .success((
                 (
                     tagStart: 0,
                     byteStart: 0,
@@ -92,7 +91,7 @@ struct FilePartSeparateTests {
         (
             chunkSize: 10,
             lastTag: 100000,
-            (
+            filePart: (
                 tagStart: 100,
                 byteStart: 1006,
                 byteEnd: 9996,
@@ -101,14 +100,14 @@ struct FilePartSeparateTests {
                 encryptedStart: 1000 + (1000 / 10 * Crypto.Symm.Stream.cipherExtraLength),
                 encryptedEnd: 10000 + (10000 / 10 * Crypto.Symm.Stream.cipherExtraLength)
             ),
-            .init(
+            indexRes: .init(
                 rangeOffset: 6,
                 rangeInIntersection: false,
                 chunkIndex: 30,
                 chunkBegin: (30 + Crypto.Symm.Stream.cipherExtraLength) * 10,
                 chunks: [10 + Crypto.Symm.Stream.cipherExtraLength]
             ),
-            .success((
+            expect: .success((
                 (
                     tagStart: 100,
                     byteStart: 1006,
