@@ -24,7 +24,9 @@ struct TestingShared {
         case fileReplacemeng
     }
      
-    static let dbListening = isTCPPortOpen(5432)
+    static let dbHost = ProcessInfo.processInfo.environment["GITHUB_PG_TESTING_HOST"] ?? "localhost"
+    static let dbPort = 5432
+    static let dbListening = try! isPortOpen(host: dbHost, port: dbPort)
     
     @MainActor static var fileStorage: FileStorage? = nil
     @MainActor static var testStage: TestStage = .entryBasics
@@ -54,7 +56,7 @@ struct TestingShared {
             let s = try await FileStorage.new(
                 eventLoop: eventLoop,
                 storagePath: testingStorageDir,
-                indexDatabaseConfigure: .init(hostname: ProcessInfo.processInfo.environment["GITHUB_PG_TESTING_HOST"] ?? "localhost", port: 5432, username: "woo", password: "password", database: "postgres", tls: .disable),
+                indexDatabaseConfigure: .init(hostname: dbHost, port: dbPort, username: "postgres", password: "password", database: "postgres", tls: .disable),
                 masterKey: Key,
                 logger: .init(label: "FileStorage-Testing"),
                 debuging: .init(tdeEncrypt: false)
@@ -74,74 +76,31 @@ func randomData(size: Int) -> ByteBuffer {
     return buffer
 }
 
-#if !canImport(Darwin) || os(macOS)
-
-func isTCPPortOpen(_ port: Int) -> Bool {
-    let task = Process()
-    let pipe = Pipe()
-    task.executableURL = URL(fileURLWithPath: "/bin/bash")
-    task.arguments = ["-c", "lsof -i :\(port)"]
-    task.standardOutput = pipe
-    task.standardError = pipe
-    do { try task.run() } catch { return false }
-    task.waitUntilExit()
-    return task.terminationStatus == 0
-}
-
-#else
-
-import Network
-import NIOConcurrencyHelpers
-
-func isTCPPortOpen(_ port: Int) -> Bool {
-    let semaphore = DispatchSemaphore(value: 0)
-    let isOpen = SendableBool()
-    
-    guard
-        port <= UInt16.max,
-        port >= UInt16.min,
-        let port = NWEndpoint.Port(rawValue: UInt16(port))
-    else { return false }
-    
-    let connection = NWConnection(
-        host: NWEndpoint.Host("localhost"),
-        port: port,
-        using: .tcp
-    )
-
-    connection.stateUpdateHandler = { state in
-        switch state {
-        case .ready:
-            isOpen.bool = true
-            connection.cancel()
-            semaphore.signal()
-
-        case .failed(_), .cancelled:
-            isOpen.bool = false
-            semaphore.signal()
-
-        default:
-            break
-        }
+func isPortOpen(host: String, port: Int, timeout: TimeAmount = .seconds(3)) throws -> Bool {
+    let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+    defer {
+        try? group.syncShutdownGracefully()
     }
 
-    connection.start(queue: .global())
-    _ = semaphore.wait(timeout: .now() + 2)
+    let promise = group.next().makePromise(of: Bool.self)
 
-    return isOpen.bool
-}
+    let bootstrap = ClientBootstrap(group: group)
+        .channelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
 
-final class SendableBool: @unchecked Sendable {
-    public var bool: Bool {
-        get { lock.withLock { __bool } }
-        set { lock.withLock { __bool = newValue } }
+    let futureChannel = bootstrap.connect(host: host, port: port)
+
+    group.next().scheduleTask(in: timeout) {
+        promise.fail(ChannelError.connectTimeout(timeout))
     }
-    private var __bool: Bool
-    private let lock = NIOLock()
-    
-    init(_ bool: Bool = false) {
-        self.__bool = bool
-    }
-}
 
-#endif
+    futureChannel.whenSuccess { channel in
+        channel.close(mode: .all, promise: nil)
+        promise.succeed(true)
+    }
+
+    futureChannel.whenFailure { error in
+        promise.succeed(false)
+    }
+
+    return try promise.futureResult.wait()
+}
