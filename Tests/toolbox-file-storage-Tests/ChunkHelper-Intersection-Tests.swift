@@ -5,7 +5,14 @@ import ErrorHandle
 @Suite("ChunkHelper 落点计算算法测试集")
 struct ChunkHelpeIntersectionrTests {
     
-    static let rangeSet: [(Range<Int64>, BufferSpace, Int64, Result<ChunkHelpers.IntersectionResult, ChunkHelpers.RangeErrcase>)] = [
+    static let rangeSet: [
+        (
+            Range<Int64>,
+            BufferSpace,
+            Int64,
+            Result<ChunkHelpers.IntersectionResult, ChunkHelpers.RangeErrcase>
+        )
+    ] = [
         (
             0..<5,
             [5, 5, 5],

@@ -21,7 +21,14 @@ struct FileReplacmentTests {
         data: TestingData
     )
     
-    static let fileList: [(StoragePath, TestingData, Int64, [Replacing])] = [
+    static let fileList: [
+        (
+            file: StoragePath,
+            data: TestingData,
+            chunkSize: Int64,
+            replacings: [Replacing]
+        )
+    ] = [
         (
             file: "example-0.txt",
             data: .string("Hello World! Testing String"),

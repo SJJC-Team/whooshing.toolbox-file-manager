@@ -17,7 +17,14 @@ struct FileAppendingTests {
     
     static let testDir: StoragePath = "testing"
     
-    static let fileList: [(StoragePath, Int64, Int64, Int64)] = [
+    static let fileList: [
+        (
+            file: StoragePath,
+            chunkSize: Int64,
+            firstInsert: Int64,
+            appendWrite: Int64
+        )
+    ] = [
         (
             file: testDir + "example-1.txt",
             chunkSize: 12343,

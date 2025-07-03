@@ -21,7 +21,14 @@ struct FileInsertionTests {
         data: TestingData
     )
     
-    static let fileList: [(StoragePath, TestingData, Int64, [Insertion])] = [
+    static let fileList: [
+        (
+            file: StoragePath,
+            data: TestingData,
+            chunkSize: Int64,
+            insertions: [Insertion]
+        )
+    ] = [
         (
             file: "example-0.txt",
             data: .string("Hello World! Testing String"),

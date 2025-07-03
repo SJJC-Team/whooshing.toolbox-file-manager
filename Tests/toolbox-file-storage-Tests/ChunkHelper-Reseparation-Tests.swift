@@ -5,7 +5,15 @@ import ErrorHandle
 @Suite("ChunkHelper 重分割算法测试集")
 struct ChunkHelperReseparationTests {
     
-    static let replacementParaSet: [(BufferSpace, Int64, BufferSpace, Int64, Result<ChunkHelpers.ReseparationResult, ChunkHelpers.RangeErrcase>)] = [
+    static let replacementParaSet: [
+        (
+            BufferSpace,
+            Int64,
+            BufferSpace,
+            Int64,
+            Result<ChunkHelpers.ReseparationResult, ChunkHelpers.RangeErrcase>
+        )
+    ] = [
         (
             [4, 6, 7],
             2,

@@ -24,11 +24,9 @@ struct TestingShared {
         case fileReplacemeng
     }
     
-    static let Key = Crypto.Symm.Key(data: Data(base64Encoded: KeyStr)!)
-    static let KeyStr = "Mzn/h5zDnIdi4C3yHaRMG62DhC9qYt8q4SfOCV338hY="
-    
+    @MainActor static let Key = Crypto.Symm.Key(data: Data(base64Encoded: KeyStr)!)
+    @MainActor static let KeyStr = "Mzn/h5zDnIdi4C3yHaRMG62DhC9qYt8q4SfOCV338hY="
     @MainActor static var fileStorage: FileStorage? = nil
-    
     @MainActor static var testStage: TestStage = .entryBasics
     
     @MainActor

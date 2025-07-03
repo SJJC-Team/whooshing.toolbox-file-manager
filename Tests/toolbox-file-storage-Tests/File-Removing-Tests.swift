@@ -26,7 +26,14 @@ struct FileRemovingTests {
         )]
     )
     
-    static let fileList: [(StoragePath, TestingData, Int64, [Range<Int64>])] = [
+    static let fileList: [
+        (
+            file: StoragePath,
+            data: TestingData,
+            chunkSize: Int64,
+            removings: [Range<Int64>]
+        )
+    ] = [
         (
             file: "example-0.txt",
             data: .string("Hello World! Testing String"),
@@ -59,7 +66,7 @@ struct FileRemovingTests {
         ),
         (
             file: "example-3.txt",
-            firstInsert: .random(1),
+            data: .random(1),
             chunkSize: 30000,
             removings: [
                 0..<0,
@@ -68,7 +75,7 @@ struct FileRemovingTests {
         ),
         (
             file: "example-4.txt",
-            firstInsert: .random(500000),
+            data: .random(500000),
             chunkSize: 30000,
             removings: [
                 100000..<110000,
@@ -80,7 +87,7 @@ struct FileRemovingTests {
         ),
         (
             file: "example-5.txt",
-            firstInsert: .random(100000),
+            data: .random(100000),
             chunkSize: 3000,
             removings: [
                 3000..<7800,
@@ -89,7 +96,7 @@ struct FileRemovingTests {
         ),
         (
             file: "example-6.txt",
-            firstInsert: .random(100000),
+            data: .random(100000),
             chunkSize: 3000,
             removings: [
                 4000..<9000,
@@ -98,7 +105,7 @@ struct FileRemovingTests {
         ),
         (
             file: "example-7.txt",
-            firstInsert: .random(100000),
+            data: .random(100000),
             chunkSize: 1000,
             removings: [
                 3000..<4000,
@@ -107,7 +114,7 @@ struct FileRemovingTests {
         ),
         (
             file: "example-8.txt",
-            firstInsert: .random(100000),
+            data: .random(100000),
             chunkSize: 1000,
             removings: [
                 3000..<4000,
@@ -117,7 +124,7 @@ struct FileRemovingTests {
         ),
         (
             file: "example-9.txt",
-            firstInsert: .random(100000),
+            data: .random(100000),
             chunkSize: 1000,
             removings: [
                 3000..<4000,
@@ -127,7 +134,7 @@ struct FileRemovingTests {
         ),
         (
             file: "example-10.txt",
-            firstInsert: .random(10000),
+            data: .random(10000),
             chunkSize: 1000,
             removings: [
                 3000..<4000,

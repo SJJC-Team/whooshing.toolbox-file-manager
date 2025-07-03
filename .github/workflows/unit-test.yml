@@ -20,7 +20,7 @@ jobs:
       with_api_check: false
       ios_xcodebuild_action: ''
 
-      only_build: false
+      only_build: true
       with_pg_test: true
       with_pg_database: "postgres"
       with_pg_user: "postgres"

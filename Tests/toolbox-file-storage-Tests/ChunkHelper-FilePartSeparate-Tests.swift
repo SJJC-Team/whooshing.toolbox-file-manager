@@ -19,7 +19,16 @@ struct FilePartSeparateTests {
     
     static let indexId = UUID()
     
-    static let separateParas: [(Int64, Int, FilePartParas, ChunkHelpers.IntersectionResult, Result<(FilePartParas?, FilePartParas?), BscError<FileWriterError>>)] = [
+    static let separateParas: [
+        (
+            chunkSize: Int64,
+            lastTag: Int,
+            FilePartParas,
+            ChunkHelpers.IntersectionResult,
+            Result<(FilePartParas?, FilePartParas?),
+            BscError<FileWriterError>>
+        )
+    ] = [
         (
             chunkSize: 65535,
             lastTag: 0,
