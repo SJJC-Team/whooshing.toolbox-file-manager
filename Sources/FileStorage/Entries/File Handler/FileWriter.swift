@@ -7,27 +7,78 @@ import AsyncAlgorithms
 import Cryptos
 import FluentKit
 
+/// 表示文件中的字节位置索引。
+///
+/// - `begin(of:)`：从文件开头开始的偏移量，默认从 0 开始。
+/// - `end(of:)`：从文件结尾开始的偏移量，默认从 0 开始。
 public enum ByteIndex: Sendable {
     case begin(of: Int64 = 0)
     case end(of: Int64 = 0)
 }
 
+/// 文件写入方式。
+///
+/// - `insert`：在指定位置插入数据，后续内容顺移。
+/// - `replace`：在指定位置替换数据，覆盖原有内容。
 public enum WriteMethod: Sendable {
     case insert
     case replace
 }
 
+/// 文件写入操作的协议，继承自 `FileContentHandler`，定义了写入、插入、替换和删除字节的方法。
 public protocol FileWriter: FileContentHandler {
+    /// 在指定位置以给定方式写入字节缓冲区数据。
+    /// - Parameters:
+    ///   - at: 字节索引位置。
+    ///   - bytes: 要写入的字节缓冲区。
+    ///   - method: 写入方式，插入或替换。
+    /// - Returns: 表示写入结果的异步事件循环结果，成功或带错误信息。
     func write(at: ByteIndex, bytes: ByteBuffer, method: WriteMethod) -> EventLoopResult<Void, BscError<File.Errcase>>
+    
+    /// 从异步字节流通道在指定位置以给定方式写入数据。
+    /// - Parameters:
+    ///   - at: 字节索引位置。
+    ///   - from: 异步字节缓冲区通道。
+    ///   - method: 写入方式，插入或替换。
+    /// - Returns: 表示写入结果的异步事件循环结果。
     func write(at: ByteIndex, from: AsyncThrowingChannel<ByteBuffer, Error>, method: WriteMethod) -> EventLoopResult<Void, BscError<File.Errcase>>
     
+    /// 在指定位置插入字节缓冲区数据。
+    /// - Parameters:
+    ///   - at: 插入位置。
+    ///   - bytes: 要插入的数据。
+    /// - Returns: 异步事件循环结果。
     func insert(at: ByteIndex, bytes: ByteBuffer) -> EventLoopResult<Void, BscError<File.Errcase>>
+    
+    /// 在指定位置替换字节缓冲区数据。
+    /// - Parameters:
+    ///   - at: 替换位置。
+    ///   - bytes: 替换的新数据。
+    /// - Returns: 异步事件循环结果。
     func replace(at: ByteIndex, bytes: ByteBuffer) -> EventLoopResult<Void, BscError<File.Errcase>>
     
+    /// 从异步字节流通道在指定位置插入数据。
+    /// - Parameters:
+    ///   - at: 插入位置。
+    ///   - from: 异步字节缓冲区通道。
+    /// - Returns: 异步事件循环结果。
     func insert(at: ByteIndex, from: AsyncThrowingChannel<ByteBuffer, Error>) -> EventLoopResult<Void, BscError<File.Errcase>>
+    
+    /// 从异步字节流通道在指定位置替换数据。
+    /// - Parameters:
+    ///   - at: 替换位置。
+    ///   - from: 异步字节缓冲区通道。
+    /// - Returns: 异步事件循环结果。
     func replace(at: ByteIndex, from: AsyncThrowingChannel<ByteBuffer, Error>) -> EventLoopResult<Void, BscError<File.Errcase>>
     
+    /// 删除指定范围内的字节。
+    /// - Parameter in: 要删除的字节范围（开区间）。
+    /// - Returns: 异步事件循环结果。
     func remove(in: Range<Int64>) -> EventLoopResult<Void, BscError<File.Errcase>>
+    
+    /// 删除指定范围内的字节。
+    /// - Parameter in: 要删除的字节范围（闭区间）。
+    /// - Returns: 异步事件循环结果。
     func remove(in: ClosedRange<Int64>) -> EventLoopResult<Void, BscError<File.Errcase>>
 }
 

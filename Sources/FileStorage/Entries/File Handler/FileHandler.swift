@@ -4,7 +4,13 @@ import Cryptos
 import NIOConcurrencyHelpers
 import ErrorHandle
 
+/// 文件内容操作处理协议，表示文件操作时需要实现的基础行为。
+///
+/// 该协议继承自 `Sendable`，支持异步关闭文件资源。
 public protocol FileContentHandler: Sendable {
+    /// 异步关闭文件资源。
+    ///
+    /// - Throws: 关闭操作失败时抛出带有文件错误类型的错误。
     func close() async throws(BscError<File.Errcase>)
 }
 

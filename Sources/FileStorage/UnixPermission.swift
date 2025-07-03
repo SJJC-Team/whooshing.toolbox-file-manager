@@ -3,35 +3,58 @@ import ErrorHandle
 import Foundation
 
 public extension FileStorage {
+    
+    /// 表示文件系统中可选的 Unix 权限配置，包括所有者、所属组和 POSIX 权限位。
     struct UnixPermission: Sendable {
+        /// 所有者用户标识，可指定 UID 或用户名。
         public let owner: User?
+        /// 所属用户组标识，可指定 GID 或组名。
         public let group: Group?
+        /// POSIX rwx 权限位设置。
         public let rwxPermissions: FilePermissions?
         
+        /// 文件所有者的标识方式。
         public enum User: Sendable {
+            /// 使用用户 ID 指定。
             case id(CUnsignedLong)
+            /// 使用用户名指定。
             case name(String)
         }
         
+        /// 文件所属组的标识方式。
         public enum Group: Sendable {
+            /// 使用组 ID 指定。
             case id(CUnsignedLong)
+            /// 使用组名指定。
             case name(String)
         }
         
+        /// 创建 UnixPermission 配置对象。
+        /// - Parameters:
+        ///   - owner: 可选所有者标识。
+        ///   - group: 可选所属组标识。
+        ///   - rwx: 可选权限位设置。
         public init(owner: User? = nil, group: Group? = nil, rwx: FilePermissions? = nil) {
             self.owner = owner
             self.group = group
             self.rwxPermissions = rwx
         }
         
+        /// 表示在设置权限时可能遇到的错误。
         public enum Errcase: String, ErrList {
+            /// 提供的用户 ID 无效。
             case uidNotValid = "用户 id 无效"
+            /// 提供的用户名无效。
             case userNameNotValid = "用户名称无效"
+            /// 提供的组 ID 无效。
             case gidNotValid = "组 id 无效"
+            /// 提供的组名无效。
             case groupNameNotValid = "组名称无效"
         }
         
-        var attributes: Res<[FileAttributeKey: Any], Errcase> {
+        /// 转换为 FileManager 可用的权限属性字典。
+        /// 包含合法性验证逻辑，若失败将返回对应错误。
+        public  var attributes: Res<[FileAttributeKey: Any], Errcase> {
             var permissions: [FileAttributeKey: Any] = [:]
             
             switch owner {
@@ -76,6 +99,7 @@ public extension FileStorage {
     }
 }
 
+/// 工具集，用于路径处理与用户/组合法性验证。
 struct FileSystemTools {
     /// 拼接路径的工具函数。
     /// - 参数 basePath: 基础路径，默认为当前目录。

@@ -1,10 +1,14 @@
 public extension File {
     
+    /// 文件类型枚举，表示文件或目录。
     enum Typed: String, Codable, Sendable {
+        /// 普通文件
         case file = "file"
+        /// 目录
         case directory = "directory"
     }
     
+    /// MIME 类型枚举，表示文件的媒体类型。
     enum MimeType: String, Codable, Sendable {
         // 文本类型
         case plain = "text/plain"
@@ -21,7 +25,7 @@ public extension File {
         case svg = "image/svg+xml"
         case webp = "image/webp"
         
-        // 音频/视频
+        // 音频/视频类型
         case mp3 = "audio/mpeg"
         case wav = "audio/wav"
         case mp4 = "video/mp4"
@@ -34,9 +38,11 @@ public extension File {
         case formURLEncoded = "application/x-www-form-urlencoded"
         case octetStream = "application/octet-stream"
         
+        /// 未知类型
         case unknow = "unknow"
 
-        // 自定义初始化（如果需要从扩展的 MIME 字符串中恢复）
+        /// 根据文件扩展名初始化 MIME 类型。
+        /// - Parameter fileExtension: 文件扩展名（不带点），不区分大小写。
         public init(fileExtension: String) {
             switch fileExtension.lowercased() {
             case "txt": self = .plain

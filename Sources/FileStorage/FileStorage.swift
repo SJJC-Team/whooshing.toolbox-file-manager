@@ -7,15 +7,15 @@ import Foundation
 import NIOAdvanced
 import NIOFileSystem
 
-/// 一个用于管理加密文件存储的类，使用 PostgreSQL 数据库存储索引。
-/// 支持事务性索引更新与可选的透明数据加密（TDE）。
+/// 管理加密文件存储的核心类，支持使用 PostgreSQL 作为索引数据库。
+/// 提供事务性索引记录、透明加密（TDE）控制，并允许设置存储权限。
 public final class FileStorage: @unchecked Sendable {
     
-    /// 用于加密文件的默认扩展名。
+    /// 默认的加密文件扩展名。
     public static let CryptoFileExtension = "wooclassified"
     
-    /// 用于控制调试行为的配置结构体。
-    /// - 参数 tdeEncrypt: 是否启用透明数据加密（TDE）。
+    /// 控制调试功能的配置结构体。
+    /// - 参数 tdeEncrypt: 是否启用透明加密。
     public struct Debuging: Sendable {
         let tdeEncrypt: Bool
         init(tdeEncrypt: Bool = true) {
@@ -23,17 +23,18 @@ public final class FileStorage: @unchecked Sendable {
         }
     }
     
-    /// 表示一个既符合 Fluent 的 Database 协议，也支持 PostgreSQL 和 SQL 的数据库类型。
+    /// Fluent 中 PostgreSQL 数据库的统一别名类型。
     public typealias PGDatabase = Database & PostgresDatabase & SQLDatabase
     
     /// 当前使用的事件循环。
     public let eventLoop: EventLoop
-    /// 用于记录日志的 Logger。
+    /// 日志记录器。
     public let logger: Logger
-    /// 文件存储的根目录，实际来源于 `rootDirIndex`。
+    /// 文件存储的根目录。
     public var rootDir: Directory {
         self.__rootDir!
     }
+    /// 当前文件系统使用的权限设置（如果有）。
     public let filePermission: UnixPermission?
     
     let storagePath: String
@@ -44,14 +45,18 @@ public final class FileStorage: @unchecked Sendable {
     private var __rootDir: Directory?
     private let dbs: Databases
     
-    /// 异步创建一个 FileStorage 实例。
-    /// - 参数 eventLoop: 用于异步操作的事件循环。
-    /// - 参数 storagePath: 文件存储的根目录路径。
-    /// - 参数 indexDatabaseConfigure: 用于初始化 PostgreSQL 数据库的配置。
-    /// - 参数 masterKey: 主加密密钥。
-    /// - 参数 logger: 日志记录器。
-    /// - 参数 debuging: 调试配置。
-    /// - 返回: 初始化成功的 FileStorage 或错误。
+    /// 创建并初始化一个新的 FileStorage 实例（异步）。
+    ///
+    /// - Parameters:
+    ///   - eventLoop: 用于异步操作的事件循环。
+    ///   - storagePath: 文件存储的根目录路径。
+    ///   - dbConfigure: PostgreSQL 数据库配置。
+    ///   - masterKey: 主加密密钥。
+    ///   - logger: 日志记录器。
+    ///   - filePermission: 可选的文件权限配置。
+    ///   - debuging: 可选的调试参数。
+    ///
+    /// - Returns: 包含初始化完成的 FileStorage 实例或错误。
     public static func new(
         eventLoop: EventLoop,
         storagePath: String,
@@ -74,14 +79,18 @@ public final class FileStorage: @unchecked Sendable {
         }
     }
     
-    /// 初始化 FileStorage 实例并进行数据库迁移与验证。
-    /// - 参数 eventLoop: 当前事件循环。
-    /// - 参数 storagePath: 存储路径。
-    /// - 参数 indexDatabaseConfigure: PostgreSQL 配置。
-    /// - 参数 masterKey: 加密用主密钥。
-    /// - 参数 logger: 日志记录器。
-    /// - 参数 debuging: 调试选项。
-    /// - throws: 初始化失败时抛出对应错误。
+    /// 初始化 FileStorage 实例并执行数据库配置与目录权限设置。
+    ///
+    /// - Parameters:
+    ///   - eventLoop: 当前使用的事件循环。
+    ///   - storagePath: 文件存储路径。
+    ///   - dbConfigure: PostgreSQL 数据库配置。
+    ///   - masterKey: 主加密密钥。
+    ///   - logger: 日志输出器。
+    ///   - filePermission: 可选的 POSIX 权限设置。
+    ///   - debuging: 调试配置。
+    ///
+    /// - Throws: 如果初始化失败，将抛出相关错误。
     init(
         eventLoop: EventLoop,
         storagePath: String,
@@ -171,28 +180,21 @@ public final class FileStorage: @unchecked Sendable {
 }
 
 extension Database {
-    /// 使用自定义错误类型包装事务操作。
-    /// - 参数 closure: 要执行的事务闭包。
-    /// - 返回: 使用自定义错误封装的结果。
+    /// 使用自定义错误类型封装的事务执行器。
     func trans<T, G>(_ closure: @escaping @Sendable (Self) -> EventLoopResult<T, G>) -> EventLoopResult<T, G> {
         self.trans { db in
             closure(db).wrapped
         }.withError()
     }
     
-    /// 在数据库中以事务方式执行闭包。
-    /// - 参数 closure: 执行逻辑。
-    /// - 返回: 闭包执行结果的 Future。
+    /// 使用 Fluent 的事务封装异步回调。
     func trans<T>(_ closure: @escaping @Sendable (Self) -> EventLoopFuture<T>) -> EventLoopFuture<T> {
         self.transaction { db in
             closure(db as! Self)
         }
     }
     
-    /// 使用 async/await 在事务中执行异步闭包。
-    /// - 参数 closure: 要执行的异步事务逻辑。
-    /// - throws: 闭包执行中的错误。
-    /// - 返回: 闭包返回的结果。
+    /// 在 async/await 环境中执行数据库事务。
     func trans<T: Sendable>(_ closure: @escaping @Sendable (Self) async throws -> T) async throws -> T {
         try await self.transaction { db in
             try await closure(db as! Self)

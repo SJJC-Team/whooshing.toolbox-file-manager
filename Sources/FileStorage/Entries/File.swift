@@ -10,13 +10,21 @@ import NIOAdvanced
 
 public typealias FileReadWriter = FileReader & FileWriter
 
+/// 表示一个加密存储系统中的文件对象，包含元数据与读写操作接口。
 public struct File: StorageEntry, Sendable {
+    /// 文件唯一标识符。
     public let id: UUID
+    /// 文件名。
     public let name: String
+    /// 文件的 MIME 类型。
     public let mimeType: MimeType
+    /// 文件大小（字节）。
     public var size: Int64 { fileIndex.size! }
+    /// 文件在存储系统中的路径。
     public let path: StoragePath
+    /// 文件创建时间。
     public let createdAt: Date
+    /// 文件最后更新时间。
     public var updatedAt: Date { fileIndex.updatedAt }
     
     public unowned let storage: FileStorage
@@ -25,6 +33,12 @@ public struct File: StorageEntry, Sendable {
     
     let fileIndex: FileIndex
     
+    /// 通过 FileIndex 创建 File 实例。
+    /// - Parameters:
+    ///   - index: 索引数据库中的文件记录。
+    ///   - parent: 父目录路径。
+    ///   - storage: 文件存储系统。
+    /// - Throws: 如果索引类型不为文件或缺少必要信息，抛出错误。
     init(
         from index: FileIndex,
         parent: StoragePath,
@@ -47,6 +61,7 @@ public struct File: StorageEntry, Sendable {
 }
 
 public extension File {
+    /// 打开文件并传入只读句柄执行异步操作。
     func withReader<T, G>(_ action: @escaping @Sendable (FileReader) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
         storage.eventLoop.makeFutureWithTask {
             let reader = try await openForRead().get()
@@ -61,6 +76,7 @@ public extension File {
         }.withError(Errcase.openFileFailed)
     }
     
+    /// 打开文件并传入只写句柄执行异步操作。
     func withWriter<T, G>(_ action: @escaping @Sendable (FileWriter) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
         storage.eventLoop.makeFutureWithTask {
             let writer = try await openForWrite().get()
@@ -75,6 +91,7 @@ public extension File {
         }.withError(Errcase.openFileFailed)
     }
     
+    /// 打开文件并传入读写句柄执行异步操作。
     func withReadWriter<T, G>(_ action: @escaping @Sendable (FileReadWriter) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
         storage.eventLoop.makeFutureWithTask {
             let readWriter = try await openForReadAndWrite().get()
@@ -91,6 +108,7 @@ public extension File {
 }
 
 public extension File {
+    /// 打开只读文件句柄。
     func openForRead() async -> Res<FileReader, Errcase> {
         await .async { () throws(BscError<Errcase>) in
             let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
@@ -111,6 +129,7 @@ public extension File {
         }
     }
     
+    /// 打开只写文件句柄。
     func openForWrite() async -> Res<FileWriter, Errcase> {
         await .async { () throws(BscError<Errcase>) in
             let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
@@ -131,6 +150,7 @@ public extension File {
         }
     }
     
+    /// 打开读写文件句柄。
     func openForReadAndWrite() async -> Res<FileReadWriter, Errcase> {
         await .async { () throws(BscError<Errcase>) in
             let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
@@ -153,19 +173,23 @@ public extension File {
 }
 
 public extension File {
-    
+    /// 同步判断文件是否存在。
     func isExist() -> Bool {
         (try? FileIndex.query(on: storage.indexDatabase).filter(\.$id == id).first().wait()) != nil
     }
     
+    /// 异步判断文件是否存在。
     func isExist() async -> Bool {
         (try? await FileIndex.query(on: storage.indexDatabase).filter(\.$id == id).first()) != nil
     }
     
+    /// 获取文件大小。
     func getSize() -> EventLoopRes<Int64, FileStorage.Errcase> {
         storage.eventLoop.makeSucceededResult(size)
     }
     
+    /// 删除文件。
+    /// - Parameter force: 是否强制删除（同时移除加密文件与数据库记录）。
     func delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
         if force {
             return storage.db.eventLoop.makeFutureWithTask {
@@ -201,6 +225,7 @@ public extension File {
         }
     }
     
+    /// 重命名文件。
     func rename(as name: String) -> EventLoopRes<File, Errcase> {
         fileIndex.name = name
         fileIndex.mimeType = name.fileExtension == nil ? .unknow : .init(fileExtension: name.fileExtension!)
@@ -214,6 +239,7 @@ public extension File {
         }
     }
     
+    /// 移动文件到指定目录，可选重命名。
     func move(to dir: Directory, as name: String? = nil) -> EventLoopRes<File, Errcase> {
         fileIndex.$parent.id = dir.fileIndex.isRoot ? nil : dir.id
         if let name = name {
@@ -233,11 +259,16 @@ public extension File {
 extension File {
     
     enum FileParaFetchErrcase: String, ErrList {
+        /// 数据库查询失败。
         case databaseFailed = "数据库查询失败"
+        /// 文件不存在。
         case fileNotExist = "文件不存在"
+        /// 派生密钥生成失败。
         case keyDeriveFailed = "派生密钥生成失败"
     }
     
+    /// 获取加密文件的实际路径与关联的 FileCrypto 对象。
+    /// - Parameter withDeleted: 是否允许从软删除记录中读取。
     func getRealFilePath(withDeleted: Bool = false) async throws(BscError<FileParaFetchErrcase>) -> (FilePath, FileCrypto) {
         
         let qc: QueryBuilder<FileCrypto>
@@ -265,6 +296,7 @@ extension File {
         )
     }
     
+    /// 构造打开加密文件所需的参数：文件路径、FileCrypto 和派生密钥。
     func makeFileHandleParas() async throws(BscError<FileParaFetchErrcase>) -> (
         FileCrypto, Crypto.Symm.Key, FilePath
     ) {
@@ -280,6 +312,7 @@ extension File {
 }
 
 extension File: CustomStringConvertible {
+    /// 返回文件的简要描述信息。
     public var description: String {
         """
         File (

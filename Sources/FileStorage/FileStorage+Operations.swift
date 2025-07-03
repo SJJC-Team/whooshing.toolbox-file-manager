@@ -9,6 +9,7 @@ import NIOFileSystem
 import Crypto
 
 public extension FileStorage {
+    /// FileStorage 所有可能抛出的错误类型枚举，按功能划分为数据库错误、目录操作错误、文件操作错误。
     enum Errcase: String, ErrList {
         case databaseInitFailed = "数据库连接失败"
         case fileSystemInitFailed = "文件系统初始化失败"
@@ -39,6 +40,12 @@ public extension FileStorage {
 }
 
 public extension FileStorage {
+    /// 创建一个目录，如果目录已存在则根据 `slience` 决定是否忽略。
+    /// - Parameters:
+    ///   - path: 要创建的目录路径。
+    ///   - createIfNeed: 是否自动创建中间目录。
+    ///   - slience: 如果目录已存在，是否忽略错误。
+    /// - Returns: 新创建或已存在的目录。
     func createDirectory(
         at path: StoragePath,
         withIntermediateDirectories createIfNeed: Bool = false,
@@ -74,6 +81,9 @@ public extension FileStorage {
         }
     }
     
+    /// 获取指定路径的目录对象。
+    /// - Parameter path: 目标目录路径。
+    /// - Returns: 目录对象。
     func getDirectory(at path: StoragePath) -> EventLoopRes<Directory, Errcase> {
         get(at: path)
             .errCast(Errcase.getDirectoryFailed, path.string)
@@ -87,6 +97,13 @@ public extension FileStorage {
 }
 
 public extension FileStorage {
+    /// 创建一个新文件，支持设置分片大小与自动创建中间目录。
+    /// - Parameters:
+    ///   - path: 文件路径。
+    ///   - chunkSize: 每个分片的大小（默认为 65535 字节）。
+    ///   - createIfNeed: 是否自动创建中间目录。
+    ///   - slience: 如果文件已存在，是否忽略错误。
+    /// - Returns: 文件对象。
     func createFile(
         at path: StoragePath,
         chunkSize: Int64 = 65535,
@@ -123,6 +140,9 @@ public extension FileStorage {
         }
     }
     
+    /// 获取指定路径的文件对象。
+    /// - Parameter path: 文件路径。
+    /// - Returns: 文件对象。
     func getFile(at path: StoragePath) -> EventLoopRes<File, Errcase> {
         get(at: path)
             .errCast(Errcase.getFileFailed)
@@ -137,6 +157,7 @@ public extension FileStorage {
 
 extension FileStorage {
     
+    /// 获取指定路径的文件索引。
     func get(at path: StoragePath) -> EventLoopRes<FileIndex, FindEntryErrcase> {
         findEntry(at: path) {
             guard let fileIndex = $0.index else {
@@ -148,6 +169,7 @@ extension FileStorage {
     
     typealias ActionContext = (index: FileIndex?, path: StoragePath, parent: FileIndex)
     
+    /// 用于路径查找过程中可能出现的错误类型。
     public enum FindEntryErrcase: String, ErrList {
         case getChildFailed = "获取子实例时发生错误"
         case actionFailed = "自定义任务失败"
@@ -181,6 +203,7 @@ extension FileStorage {
         return r.map { $0.0 }
     }
     
+    /// 用于数据库读写过程中可能出现的错误类型。
     public enum DatabaseErrcase: String, ErrList {
         case saveFailed = "数据库保存动作失败"
         case queryFailed = "数据库查询失败"
@@ -188,6 +211,7 @@ extension FileStorage {
         case fetchIdFailed = "获取实例 ID 失败"
     }
     
+    /// 获取指定目录下的子文件或子目录。
     func getChild(
         at index: FileIndex,
         name: String
@@ -207,6 +231,7 @@ extension FileStorage {
             .withError(DatabaseErrcase.queryFailed)
     }
     
+    /// 获取指定路径的父目录索引，可递归创建。
     func getParent(
         at path: StoragePath,
         withIntermediateDirectories createIfNeed: Bool = false
@@ -237,6 +262,7 @@ extension FileStorage {
         }
     }
     
+    /// 创建新的目录索引项。
     @Sendable func newDirIndex(
         parent: FileIndex?,
         path: StoragePath
@@ -250,6 +276,7 @@ extension FileStorage {
         return new.save(on: self.indexDatabase).map { new }.withError(DatabaseErrcase.saveFailed)
     }
     
+    /// 创建新的文件索引项，并写入实际文件。
     @Sendable func newFileIndex(
         parent: FileIndex?,
         path: StoragePath,

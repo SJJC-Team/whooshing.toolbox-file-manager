@@ -7,20 +7,33 @@ import ErrorHandle
 import NIOAdvanced
 import NIOFileSystem
 
+/// 表示文件系统中的目录对象，支持异步查询、大小计算、子项列出与递归删除等操作。
 public struct Directory: StorageEntry, Sendable {
     
+    /// 目录 ID，根目录为 nil。
     public let id: UUID?
+    /// 目录名称。
     public let name: String
+    /// 目录的完整路径。
     public let path: StoragePath
+    /// 创建时间。
     public let createdAt: Date
+    /// 最后更新时间。
     public let updatedAt: Date
     
+    /// 文件存储系统引用。
     public unowned let storage: FileStorage
     
     let fileIndex: FileIndex
     
     public typealias Errcase = FileStorage.Errcase
     
+    /// 使用索引数据初始化目录对象。
+    /// - Parameters:
+    ///   - index: 来自数据库的文件索引（应为目录类型）。
+    ///   - parent: 父路径（可选）。
+    ///   - storage: 文件存储上下文。
+    /// - Throws: 如果类型不匹配或索引无效，抛出错误。
     init(
         from index: FileIndex,
         parent: StoragePath?,
@@ -40,8 +53,10 @@ public struct Directory: StorageEntry, Sendable {
 }
 
 public extension Directory {
+    /// 是否为根目录。
     var isRoot: Bool { self.id == nil }
     
+    /// 检查目录是否在数据库中存在（同步）。
     func isExist() -> Bool {
         if let id = self.id {
             return (try? FileIndex.query(on: storage.indexDatabase).filter(\.$id == id).first().wait()) != nil
@@ -50,6 +65,7 @@ public extension Directory {
         }
     }
     
+    /// 检查目录是否在数据库中存在（异步）。
     func isExist() async -> Bool {
         if let id = self.id {
             return (try? await FileIndex.query(on: storage.indexDatabase).filter(\.$id == id).first()) != nil
@@ -58,6 +74,7 @@ public extension Directory {
         }
     }
     
+    /// 获取目录下所有子项（文件和目录）的总大小。
     func getSize() -> EventLoopRes<Int64, FileStorage.Errcase> {
         subitems().wrapped
             .flatMapEach(on: storage.eventLoop) {
@@ -69,6 +86,9 @@ public extension Directory {
             }
     }
     
+    /// 获取当前目录下的所有子项（文件与目录），可包含软删除的内容。
+    /// - Parameter withDeleted: 是否包含软删除项。
+    /// - Returns: 子项数组。
     func subitems(withDeleted: Bool = false) -> EventLoopRes<[any StorageEntry], Errcase> {
         
         let r: QueryBuilder<FileIndex>
@@ -101,6 +121,8 @@ public extension Directory {
         }
     }
     
+    /// 清空目录内容。
+    /// - Parameter force: 是否强制删除（包括软删除项）。
     func empty(force: Bool = false) -> EventLoopRes<Void, Errcase> {
         subitems(withDeleted: force).wrapped
             .flatMapEach(on: storage.eventLoop) {
@@ -109,6 +131,8 @@ public extension Directory {
             .withError(Errcase.emptyDirectoryFailed)
     }
     
+    /// 删除目录，可选择软删除或硬删除。
+    /// - Parameter force: 若为 true，则从数据库和文件系统中物理删除所有子项。
     func delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
         guard
             !self.isRoot,
@@ -218,6 +242,9 @@ public extension Directory {
         }
     }
     
+    /// 重命名当前目录。
+    /// - Parameter name: 新名称。
+    /// - Returns: 更新后的目录对象。
     func rename(as name: String) -> EventLoopRes<Directory, Errcase> {
         guard !self.isRoot else {
             return storage.eventLoop.makeFailedResult(Errcase.renameDirectoryFailed, "不可重命名根目录")
@@ -233,6 +260,11 @@ public extension Directory {
         }
     }
     
+    /// 将目录移动到指定目录下，支持改名。
+    /// - Parameters:
+    ///   - dir: 目标目录。
+    ///   - name: 可选的新名称。
+    /// - Returns: 更新后的目录对象。
     func move(to dir: Directory, as name: String? = nil) -> EventLoopRes<Directory, Errcase> {
         guard !self.isRoot else {
             return storage.eventLoop.makeFailedResult(Errcase.moveDirectoryFailed, "不可操作根目录")
@@ -261,6 +293,7 @@ public extension Directory {
 }
 
 extension Directory: CustomStringConvertible {
+    /// 目录的调试描述信息。
     public var description: String {
         """
         Directory (
