@@ -4,6 +4,7 @@ import NIOCore
 import NIOPosix
 import NIO
 import Cryptos
+import NIOFileSystem
 import Foundation
 @testable import FileStorage
 
@@ -32,13 +33,27 @@ struct TestingShared {
     
     @MainActor
     static func getFileStorage() async throws -> FileStorage {
+        
+        let testingStorageDir = FileStorage.resolvePath(append: "~/file_storage_testing")
+        
+        try await Task.detached {
+            let dir: DirectoryFileHandle?
+            do {
+                dir = try await FileSystem.shared.openDirectory(atPath: .init(stringLiteral: testingStorageDir), options: .init())
+            } catch {
+                dir = nil
+                try await FileSystem.shared.createDirectory(at: .init(stringLiteral: testingStorageDir), withIntermediateDirectories: true)
+            }
+            try await dir?.close()
+        }.value
+        
         guard let storage = fileStorage else {
             let pool = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
             let eventLoop = pool.next()
             let s = try await FileStorage.new(
                 eventLoop: eventLoop,
-                storagePath: "~/file_storage_testing",
-                indexDatabaseConfigure: .init(hostname: "localhost", port: 5432, username: "clwang", database: "postgres", tls: .disable),
+                storagePath: testingStorageDir,
+                indexDatabaseConfigure: .init(hostname: "localhost", port: 5432, username: "postgres", password: "password", database: "postgres", tls: .disable),
                 masterKey: Key,
                 logger: .init(label: "FileStorage-Testing"),
                 debuging: .init(tdeEncrypt: false)

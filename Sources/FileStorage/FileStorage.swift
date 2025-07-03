@@ -130,7 +130,7 @@ public final class FileStorage: @unchecked Sendable {
     }
     
     /// 拼接路径的实用函数
-    private static func resolvePath(basePath: String = FileManager.default.currentDirectoryPath, append pathToAppend: String) -> String {
+    static func resolvePath(basePath: String = FileManager.default.currentDirectoryPath, append pathToAppend: String) -> String {
         let base = (basePath as NSString).expandingTildeInPath
         let baseURL = URL(fileURLWithPath: base).deletingLastPathComponent()
         let appended = (pathToAppend as NSString).expandingTildeInPath
