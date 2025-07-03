@@ -27,14 +27,18 @@ struct TestingShared {
     static let dbHost = ProcessInfo.processInfo.environment["GITHUB_PG_TESTING_HOST"] ?? "localhost"
     static let dbPort = 5432
     static let dbListening = try! isPortOpen(host: dbHost, port: dbPort)
+    static let permission = FileStorage.UnixPermission(rwx: [.groupRead, .ownerReadWriteExecute])
     
     @MainActor static var fileStorage: FileStorage? = nil
     @MainActor static var testStage: TestStage = .entryBasics
     
     @MainActor
     static func getFileStorage() async throws -> FileStorage {
+        if let storage = fileStorage {
+            return storage
+        }
         
-        let testingStorageDir = FileStorage.resolvePath(append: "~/file_storage_testing")
+        let testingStorageDir = FileSystemTools.resolvePath(append: "~/file_storage_testing")
         
         let KeyStr = "Mzn/h5zDnIdi4C3yHaRMG62DhC9qYt8q4SfOCV338hY="
         let Key = Crypto.Symm.Key(data: Data(base64Encoded: KeyStr)!)
@@ -50,21 +54,19 @@ struct TestingShared {
             try await dir?.close()
         }.value
         
-        guard let storage = fileStorage else {
-            let pool = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
-            let eventLoop = pool.next()
-            let s = try await FileStorage.new(
-                eventLoop: eventLoop,
-                storagePath: testingStorageDir,
-                indexDatabaseConfigure: .init(hostname: dbHost, port: dbPort, username: "postgres", password: "password", database: "postgres", tls: .disable),
-                masterKey: Key,
-                logger: .init(label: "FileStorage-Testing"),
-                debuging: .init(tdeEncrypt: false)
-            ).get()
-            self.fileStorage = s
-            return s
-        }
-        return storage
+        let pool = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
+        let eventLoop = pool.next()
+        let s = try await FileStorage.new(
+            eventLoop: eventLoop,
+            storagePath: testingStorageDir,
+            dbConfigure: .init(hostname: dbHost, port: dbPort, username: "postgres", password: "password", database: "postgres", tls: .disable),
+            masterKey: Key,
+            logger: .init(label: "FileStorage-Testing"),
+            filePermission: permission,
+            debuging: .init(tdeEncrypt: false)
+        ).get()
+        self.fileStorage = s
+        return s
     }
 }
 

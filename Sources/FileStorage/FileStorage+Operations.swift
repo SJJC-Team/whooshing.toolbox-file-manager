@@ -184,6 +184,7 @@ extension FileStorage {
     public enum DatabaseErrcase: String, ErrList {
         case saveFailed = "数据库保存动作失败"
         case queryFailed = "数据库查询失败"
+        case fileCreateFailed = "文件创建失败"
         case fetchIdFailed = "获取实例 ID 失败"
     }
     
@@ -275,18 +276,27 @@ extension FileStorage {
         fileCrypto.sharedData = sharedDataGenerate(file: file)
         fileCrypto.storageKey = storageKeyGenerate(file: file)
         
-        return db.eventLoop.makeFutureWithTask {
-            try await FileSystem.shared.withFileHandle(
-                forWritingAt: .init("\(self.storagePath)/\(fileCrypto.storageKey).\(Self.CryptoFileExtension)"),
-                options: .newFile(replaceExisting: false)
-            ) { _ in }
+        return db.eventLoop.submitResult { () throws(BscError<DatabaseErrcase>) in
+            let permissionAttributes = try required(throws: DatabaseErrcase.fileCreateFailed, "权限信息无效") {
+                try self.filePermission?.attributes.get()
+            } ?? [:]
+            
+            guard
+                FileManager.default.createFile(
+                    atPath: "\(self.storagePath)/\(fileCrypto.storageKey).\(Self.CryptoFileExtension)",
+                    contents: nil,
+                    attributes: permissionAttributes
+                )
+            else {
+                throw DatabaseErrcase.fileCreateFailed.d("未知原因")
+            }
         }.flatMap {
             self.db.transaction { db in
                 file.save(on: db).flatMap {
                     fileCrypto.save(on: db).map { file }
                 }
-            }
-        }.withError(DatabaseErrcase.saveFailed)
+            }.withError(DatabaseErrcase.saveFailed)
+        }
         
         func saltGenerate() -> Base64String {
             var salt = Data()
