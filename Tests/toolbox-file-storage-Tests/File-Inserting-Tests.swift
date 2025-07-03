@@ -7,7 +7,7 @@ import Cryptos
 import NIOCore
 @testable import FileStorage
 
-@Suite("File 数据插入测试集", .serialized)
+@Suite("File 数据插入测试集", .serialized, .enabled(if: TestingShared.dbListening))
 struct FileInsertionTests {
     @Test("开始测试")
     func start() async throws {

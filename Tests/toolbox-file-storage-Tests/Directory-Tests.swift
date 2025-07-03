@@ -4,7 +4,7 @@ import NIOFileSystem
 import Foundation
 @testable import FileStorage
 
-@Suite("Directory 测试集", .serialized)
+@Suite("Directory 测试集", .serialized, .enabled(if: TestingShared.dbListening))
 struct DirectoryTests {
     @Test("开始测试")
     func start() async throws {

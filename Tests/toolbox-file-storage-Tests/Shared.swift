@@ -23,6 +23,8 @@ struct TestingShared {
         case fileRemoving
         case fileReplacemeng
     }
+     
+    static let dbListening = isTCPPortOpen(5432)
     
     @MainActor static let Key = Crypto.Symm.Key(data: Data(base64Encoded: KeyStr)!)
     @MainActor static let KeyStr = "Mzn/h5zDnIdi4C3yHaRMG62DhC9qYt8q4SfOCV338hY="
@@ -51,7 +53,7 @@ struct TestingShared {
             let s = try await FileStorage.new(
                 eventLoop: eventLoop,
                 storagePath: testingStorageDir,
-                indexDatabaseConfigure: .init(hostname: ProcessInfo.processInfo.environment["GITHUB_PG_TESTING_HOST"] ?? "localhost", port: 5432, username: "postgres", password: "password", database: "postgres", tls: .disable),
+                indexDatabaseConfigure: .init(hostname: ProcessInfo.processInfo.environment["GITHUB_PG_TESTING_HOST"] ?? "localhost", port: 5432, username: "clwang", password: "password", database: "postgres", tls: .disable),
                 masterKey: Key,
                 logger: .init(label: "FileStorage-Testing"),
                 debuging: .init(tdeEncrypt: false)
@@ -70,3 +72,75 @@ func randomData(size: Int) -> ByteBuffer {
     buffer.writeBytes(randomBytes)
     return buffer
 }
+
+#if !canImport(Darwin) || os(macOS)
+
+func isTCPPortOpen(_ port: Int) -> Bool {
+    let task = Process()
+    let pipe = Pipe()
+    task.executableURL = URL(fileURLWithPath: "/bin/bash")
+    task.arguments = ["-c", "lsof -i :\(port)"]
+    task.standardOutput = pipe
+    task.standardError = pipe
+    do { try task.run() } catch { return false }
+    task.waitUntilExit()
+    return task.terminationStatus == 0
+}
+
+#else
+
+import Network
+import NIOConcurrencyHelpers
+
+func isTCPPortOpen(_ port: Int) -> Bool {
+    let semaphore = DispatchSemaphore(value: 0)
+    let isOpen = SendableBool()
+    
+    guard
+        port <= UInt16.max,
+        port >= UInt16.min,
+        let port = NWEndpoint.Port(rawValue: UInt16(port))
+    else { return false }
+    
+    let connection = NWConnection(
+        host: NWEndpoint.Host("localhost"),
+        port: port,
+        using: .tcp
+    )
+
+    connection.stateUpdateHandler = { state in
+        switch state {
+        case .ready:
+            isOpen.bool = true
+            connection.cancel()
+            semaphore.signal()
+
+        case .failed(_), .cancelled:
+            isOpen.bool = false
+            semaphore.signal()
+
+        default:
+            break
+        }
+    }
+
+    connection.start(queue: .global())
+    _ = semaphore.wait(timeout: .now() + 2)
+
+    return isOpen.bool
+}
+
+final class SendableBool: @unchecked Sendable {
+    public var bool: Bool {
+        get { lock.withLock { __bool } }
+        set { lock.withLock { __bool = newValue } }
+    }
+    private var __bool: Bool
+    private let lock = NIOLock()
+    
+    init(_ bool: Bool = false) {
+        self.__bool = bool
+    }
+}
+
+#endif

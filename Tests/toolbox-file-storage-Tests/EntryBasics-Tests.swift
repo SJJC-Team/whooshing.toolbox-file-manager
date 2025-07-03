@@ -4,7 +4,7 @@ import NIOFileSystem
 import Foundation
 @testable import FileStorage
 
-@Suite("FileStorage 实体基本测试集", .serialized)
+@Suite("FileStorage 实体基本测试集", .serialized, .enabled(if: TestingShared.dbListening))
 struct EntryBasicsTests {
     
     @Test("开始测试")

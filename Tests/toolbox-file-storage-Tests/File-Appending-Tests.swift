@@ -6,7 +6,7 @@ import FluentKit
 import Cryptos
 @testable import FileStorage
 
-@Suite("File 追加测试集", .serialized)
+@Suite("File 追加测试集", .serialized, .enabled(if: TestingShared.dbListening))
 struct FileAppendingTests {
     @Test("开始测试")
     func start() async throws {
