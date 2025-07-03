@@ -25,11 +25,11 @@ struct FileRemovingTests {
             tailIgnore: Int64
         )]
     )
-
-    static let fileList: [(StoragePath, ByteBuffer, Int64, [Range<Int64>])] = [
+    
+    static let fileList: [(StoragePath, TestingData, Int64, [Range<Int64>])] = [
         (
             file: "example-0.txt",
-            data: ByteBuffer(string: "Hello World! Testing String"),
+            data: .string("Hello World! Testing String"),
             chunkSize: 5,
             removings: [
                 0..<3,
@@ -38,7 +38,7 @@ struct FileRemovingTests {
         ),
         (
             file: "example-1.txt",
-            data: randomData(size: 65535 * 5),
+            data: .random(65535 * 5),
             chunkSize: 12343,
             removings: [
                 0..<500,
@@ -49,7 +49,7 @@ struct FileRemovingTests {
         ),
         (
             file: "example-2.txt",
-            data: randomData(size: 2000 * 10),
+            data: .random(2000 * 10),
             chunkSize: 200,
             removings: [
                 0..<500,
@@ -59,7 +59,7 @@ struct FileRemovingTests {
         ),
         (
             file: "example-3.txt",
-            firstInsert: randomData(size: 1),
+            firstInsert: .random(1),
             chunkSize: 30000,
             removings: [
                 0..<0,
@@ -68,7 +68,7 @@ struct FileRemovingTests {
         ),
         (
             file: "example-4.txt",
-            firstInsert: randomData(size: 500000),
+            firstInsert: .random(500000),
             chunkSize: 30000,
             removings: [
                 100000..<110000,
@@ -80,7 +80,7 @@ struct FileRemovingTests {
         ),
         (
             file: "example-5.txt",
-            firstInsert: randomData(size: 100000),
+            firstInsert: .random(100000),
             chunkSize: 3000,
             removings: [
                 3000..<7800,
@@ -89,7 +89,7 @@ struct FileRemovingTests {
         ),
         (
             file: "example-6.txt",
-            firstInsert: randomData(size: 100000),
+            firstInsert: .random(100000),
             chunkSize: 3000,
             removings: [
                 4000..<9000,
@@ -98,7 +98,7 @@ struct FileRemovingTests {
         ),
         (
             file: "example-7.txt",
-            firstInsert: randomData(size: 100000),
+            firstInsert: .random(100000),
             chunkSize: 1000,
             removings: [
                 3000..<4000,
@@ -107,7 +107,7 @@ struct FileRemovingTests {
         ),
         (
             file: "example-8.txt",
-            firstInsert: randomData(size: 100000),
+            firstInsert: .random(100000),
             chunkSize: 1000,
             removings: [
                 3000..<4000,
@@ -117,7 +117,7 @@ struct FileRemovingTests {
         ),
         (
             file: "example-9.txt",
-            firstInsert: randomData(size: 100000),
+            firstInsert: .random(100000),
             chunkSize: 1000,
             removings: [
                 3000..<4000,
@@ -127,7 +127,7 @@ struct FileRemovingTests {
         ),
         (
             file: "example-10.txt",
-            firstInsert: randomData(size: 10000),
+            firstInsert: .random(10000),
             chunkSize: 1000,
             removings: [
                 3000..<4000,
@@ -143,10 +143,17 @@ struct FileRemovingTests {
     }
     
     @Test("文件数据抹除测试", arguments: fileList)
-    func fileDataRemoveTest(path: StoragePath, data: ByteBuffer, chunkSize: Int64, removings: [Range<Int64>]) async throws {
+    func fileDataRemoveTest(path: StoragePath, testingData: TestingData, chunkSize: Int64, removings: [Range<Int64>]) async throws {
         let storage = try await TestingShared.getFileStorage()
         
         let file = try await storage.getFile(at: path).get()
+        
+        let data: ByteBuffer
+        
+        switch testingData {
+        case .string(let s): data = ByteBuffer(string: s)
+        case .random(let size): data = randomData(size: size)
+        }
         
         let dataSize = Int64(data.readableBytes)
         
@@ -238,13 +245,13 @@ struct FileRemovingTests {
         do {
             for i in 5..<10 {
                 let filePath: StoragePath = .init(stringLiteral: "example-\(i).txt")
-                let size = Int64.random(in: 10000..<300000)
+                let size = Int.random(in: 10000..<300000)
                 let chunkSize = Int64.random(in: 10..<10000)
                 
                 let times = Int.random(in: 2..<12)
                 
                 var removings: [Range<Int64>] = []
-                var curSize = size
+                var curSize = Int64(size)
                 
                 for _ in 0..<times {
                     let lower = Int64.random(in: 0..<curSize)
@@ -259,7 +266,7 @@ struct FileRemovingTests {
                 print("""
                 (
                     file: "\(filePath)", 
-                    data: randomData(size: \(size)), 
+                    data: .random(\(size)), 
                     chunkSize: \(chunkSize), 
                     removings: [
                         \(removings.map { $0.description }.joined(separator: ",\n\t\t"))
@@ -267,7 +274,7 @@ struct FileRemovingTests {
                 ),
                 """)
                 try await self.createFileTest(path: filePath, chunkSize: chunkSize)
-                try await self.fileDataRemoveTest(path: filePath, data: randomData(size: Int(size)), chunkSize: chunkSize, removings: removings)
+                try await self.fileDataRemoveTest(path: filePath, testingData: .random(size), chunkSize: chunkSize, removings: removings)
             }
             try await self.emptyAllTest()
             try await self.emptyTest()

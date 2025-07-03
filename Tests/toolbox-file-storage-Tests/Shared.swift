@@ -7,6 +7,11 @@ import Cryptos
 import Foundation
 @testable import FileStorage
 
+enum TestingData {
+    case string(String)
+    case random(Int)
+}
+
 struct TestingShared {
 
     enum TestStage {
@@ -21,8 +26,6 @@ struct TestingShared {
     static let Key = Crypto.Symm.Key(data: Data(base64Encoded: KeyStr)!)
     static let KeyStr = "Mzn/h5zDnIdi4C3yHaRMG62DhC9qYt8q4SfOCV338hY="
     
-    static let chunkSize: Int64 = 65535
-    
     @MainActor static var fileStorage: FileStorage? = nil
     
     @MainActor static var testStage: TestStage = .entryBasics
@@ -34,9 +37,8 @@ struct TestingShared {
             let eventLoop = pool.next()
             let s = try await FileStorage.new(
                 eventLoop: eventLoop,
-                storagePath: "/Users/clwang/Downloads/file_storage_testing",
+                storagePath: "~/file_storage_testing",
                 indexDatabaseConfigure: .init(hostname: "localhost", port: 5432, username: "clwang", database: "postgres", tls: .disable),
-                chunkSize: chunkSize,
                 masterKey: Key,
                 logger: .init(label: "FileStorage-Testing"),
                 debuging: .init(tdeEncrypt: false)

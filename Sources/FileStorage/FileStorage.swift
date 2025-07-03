@@ -21,7 +21,6 @@ public final class FileStorage: @unchecked Sendable {
     
     public let eventLoop: EventLoop
     public let logger: Logger
-    public let chunkSize: Int64
     public var rootDir: Directory {
         self.__rootDir!
     }
@@ -38,7 +37,6 @@ public final class FileStorage: @unchecked Sendable {
         eventLoop: EventLoop,
         storagePath: String,
         indexDatabaseConfigure: SQLPostgresConfiguration,
-        chunkSize: Int64,
         masterKey: Crypto.Symm.Key,
         logger: Logger,
         debuging: Debuging? = nil
@@ -48,7 +46,6 @@ public final class FileStorage: @unchecked Sendable {
                 eventLoop: eventLoop,
                 storagePath: storagePath,
                 indexDatabaseConfigure: indexDatabaseConfigure,
-                chunkSize: chunkSize,
                 masterKey: masterKey,
                 logger: logger,
                 debuging: debuging
@@ -60,11 +57,12 @@ public final class FileStorage: @unchecked Sendable {
         eventLoop: EventLoop,
         storagePath: String,
         indexDatabaseConfigure: SQLPostgresConfiguration,
-        chunkSize: Int64,
         masterKey: Crypto.Symm.Key,
         logger: Logger,
         debuging: Debuging? = nil
     ) async throws(BscError<Errcase>) {
+        
+        let storagePath = Self.resolvePath(append: storagePath)
         
         let fileAttributes = try required(throws: Errcase.fileSystemInitFailed, "文件信息参数读取失败") {
             try FileManager.default.attributesOfItem(atPath: storagePath)
@@ -81,7 +79,6 @@ public final class FileStorage: @unchecked Sendable {
         self.eventLoop = eventLoop
         self.storagePath = storagePath
         self.masterKey = masterKey
-        self.chunkSize = chunkSize
         self.logger = logger
         self.dbs = Databases(threadPool: .singleton, on: eventLoop)
         
@@ -130,6 +127,20 @@ public final class FileStorage: @unchecked Sendable {
         self.rootDirIndex = index
         
         self.__rootDir = try .init(from: rootDirIndex, parent: nil, storage: self)
+    }
+    
+    /// 拼接路径的实用函数
+    private static func resolvePath(basePath: String = FileManager.default.currentDirectoryPath, append pathToAppend: String) -> String {
+        let base = (basePath as NSString).expandingTildeInPath
+        let baseURL = URL(fileURLWithPath: base).deletingLastPathComponent()
+        let appended = (pathToAppend as NSString).expandingTildeInPath
+        let finalURL: URL
+        if appended.hasPrefix("/") {
+            finalURL = URL(fileURLWithPath: appended)
+        } else {
+            finalURL = baseURL.appendingPathComponent(appended)
+        }
+        return finalURL.standardized.path
     }
 }
 

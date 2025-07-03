@@ -18,43 +18,43 @@ struct FileInsertionTests {
     
     typealias Insertion = (
         index: ByteIndex,
-        data: ByteBuffer
+        data: TestingData
     )
     
-    static let fileList: [(StoragePath, ByteBuffer, Int64, [Insertion])] = [
+    static let fileList: [(StoragePath, TestingData, Int64, [Insertion])] = [
         (
             file: "example-0.txt",
-            data: ByteBuffer(string: "Hello World! Testing String"),
+            data: .string("Hello World! Testing String"),
             chunkSize: 5,
             insertions: [
-                (.begin(), ByteBuffer(string: "123")),
-                (.begin(of: 5), ByteBuffer(string: "456")),
-                (.begin(of: 10), ByteBuffer(string: "789")),
-                (.begin(of: 26), ByteBuffer(string: "10111213")),
-                (.end(of: 3), ByteBuffer(string: "end")),
-                (.end(), ByteBuffer(string: "testing"))
+                (.begin(), .string("123")),
+                (.begin(of: 5), .string("456")),
+                (.begin(of: 10), .string("789")),
+                (.begin(of: 26), .string("10111213")),
+                (.end(of: 3), .string("end")),
+                (.end(), .string("testing"))
             ]
         ),
         (
             file: "example-1.txt",
-            data: randomData(size: 65535),
+            data: .random(65535),
             chunkSize: 20,
             insertions: [
-                (.begin(of: 65535), randomData(size: 10000)),
-                (.begin(of: 8000), randomData(size: 4000)),
-                (.end(of: 10000), randomData(size: 8192)),
-                (.begin(of: 30), randomData(size: 6000))
+                (.begin(of: 65535), .random(10000)),
+                (.begin(of: 8000), .random(4000)),
+                (.end(of: 10000), .random(8192)),
+                (.begin(of: 30), .random(6000))
             ]
         ),
         (
             file: "example-2.txt",
-            data: randomData(size: 0),
+            data: .random(0),
             chunkSize: 100000,
             insertions: [
-                (.begin(), randomData(size: 1000)),
-                (.end(), randomData(size: 4000)),
-                (.end(of: 2000), randomData(size: 3000)),
-                (.begin(of: 0), randomData(size: 6000))
+                (.begin(), .random(1000)),
+                (.end(), .random(4000)),
+                (.end(of: 2000), .random(3000)),
+                (.begin(of: 0), .random(6000))
             ]
         )
     ]
@@ -66,10 +66,17 @@ struct FileInsertionTests {
     }
     
     @Test("文件数据插入测试", arguments: fileList)
-    func fileDataInsertionTest(path: StoragePath, data: ByteBuffer, chunkSize: Int64, insertions: [Insertion]) async throws {
+    func fileDataInsertionTest(path: StoragePath, testingData: TestingData, chunkSize: Int64, insertions: [Insertion]) async throws {
         let storage = try await TestingShared.getFileStorage()
         
         let file = try await storage.getFile(at: path).get()
+        
+        let data: ByteBuffer
+        
+        switch testingData {
+        case .string(let s): data = ByteBuffer(string: s)
+        case .random(let size): data = randomData(size: size)
+        }
         
         let dataSize = Int64(data.readableBytes)
         
@@ -92,8 +99,15 @@ struct FileInsertionTests {
         for insertion in insertions {
             print(dataTest.readableBytes)
             
+            let insertData: ByteBuffer
+            
+            switch insertion.data {
+            case .string(let s): insertData = ByteBuffer(string: s)
+            case .random(let size): insertData = randomData(size: size)
+            }
+            
             let fileData = try await file.withReadWriter { readWriter in
-                readWriter.write(at: insertion.index, bytes: insertion.data, method: .insert).flatMap {
+                readWriter.write(at: insertion.index, bytes: insertData, method: .insert).flatMap {
                     readWriter.readData(part: .all)
                 }
             }.get()
@@ -111,7 +125,7 @@ struct FileInsertionTests {
             var right = dataTest.getSlice(at: index, length: dataTest.readableBytes - index) ?? ByteBuffer()
             dataTest = dataTest.getSlice(at: 0, length: index) ?? ByteBuffer()
             
-            dataTest.writeImmutableBuffer(insertion.data)
+            dataTest.writeImmutableBuffer(insertData)
             dataTest.writeBuffer(&right)
             
 //            print("dataTest: \(dataTest.getString(at: 0, length: dataTest.readableBytes) ?? "nil")")
@@ -186,7 +200,7 @@ struct FileInsertionTests {
                     let size = Int.random(in: 0..<10000)
                     curSize += Int64(size)
                     
-                    insertions.append((Bool.random() ? .begin(of: index) : .end(of: index), randomData(size: size)))
+                    insertions.append((Bool.random() ? .begin(of: index) : .end(of: index), .random(size)))
                 }
                 
                 print("""
@@ -197,15 +211,23 @@ struct FileInsertionTests {
                     insertions: [
                         \(insertions.map { insertion in
                             switch insertion.index {
-                            case .begin(of: let i): return "(.begin(of: \(i)), randomData(size: \(insertion.data.readableBytes)))"
-                            case .end(of: let i): return "(.end(of: \(i)), randomData(size: \(insertion.data.readableBytes)))"
+                            case .begin(of: let i):
+                                switch insertion.data {
+                                    case .random(let s): return "(.begin(of: \(i)), .random(\(s)))"
+                                    case .string(let s): return "(.begin(of: \(i)), .string(\(s.count)))"
+                                }
+                            case .end(of: let i):
+                                    switch insertion.data {
+                                        case .random(let s): return "(.end(of: \(i)), .random(\(s)))"
+                                        case .string(let s): return "(.end(of: \(i)), .string(\(s.count)))"
+                                    }
                             }
                         }.joined(separator: ",\n\t\t"))
                     ]
                 ),
                 """)
                 try await self.createFileTest(path: filePath, chunkSize: chunkSize)
-                try await self.fileDataInsertionTest(path: filePath, data: randomData(size: Int(size)), chunkSize: chunkSize, insertions: insertions)
+                try await self.fileDataInsertionTest(path: filePath, testingData: .random(Int(size)), chunkSize: chunkSize, insertions: insertions)
             }
             try await self.emptyAllTest()
             try await self.emptyTest()
