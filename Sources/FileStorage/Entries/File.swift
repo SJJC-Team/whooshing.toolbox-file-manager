@@ -27,6 +27,8 @@ public typealias FileReadWriter = FileReader & FileWriter
 /// let path: StoragePath = "testing/example.txt"
 ///
 /// // 在指定的路径下创建文件
+/// // 你可以指定 withIntermediateDirectories: 参数为 true 以自动创建中间目录
+/// // 否则，若中间目录不存在，将会抛出错误
 /// let file = try await storage.createFile(at: path).get()
 ///
 /// print(file.name)                // <-- print: example.txt

@@ -15,7 +15,115 @@ import NIOAdvanced
 /// 使用时需要指定用于加密的加密密钥，数据库连接参数，存储目录，权限设置等等参数。
 /// 一旦初始化完成即可进行各种文件系统操作
 ///
-/// 初始化操作，详见 `FileStorage.new(eventLoop: storagePath: dbConfig: masterkey: ...)` 工厂函数
+/// 初始化一个 `FileStorage` 实例:
+/// ``` swift
+/// import NIO
+/// import Cryptos
+/// import Foundation
+/// import FileStorage
+/// import FluentPostgresDriver
+///
+/// // 准备线程，该实例将运行在其上
+/// let pool = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
+/// let eventLoop = pool.next()
+///
+/// // 准备主目录，该文件系统将会将所有的加密文件存于该位置
+/// // 支持相对路径，以及路径修饰符
+/// let storageDir: String = "~/data"
+///
+/// // 准备 PostgreSQL 服务连接参数
+/// // 请修改这些参数以符合你的情况
+/// let postgresConfigure = SQLPostgresConfiguration(
+///     hostname: "localhost",
+///     port: 5432,
+///     username: "postgres",
+///     password: "password",
+///     database: "postgres",
+///     tls: .disable
+/// )
+///
+/// // 准备一个密钥，作为该文件系统的加密主密钥
+/// // 该密钥不会被用于直接加密，而只会使用其派生版本
+/// let keyStr = "Mzn/h5zDnIdi4C3yHaRMG62DhC9qYt8q4SfOCV338hY="
+/// let key = Crypto.Symm.Key(data: Data(base64Encoded: keyStr)!)
+///
+/// // 设置加密文件的 Unix 权限，这一步可忽略，传为 nil 则表示使用默认设置
+/// // 另见 FileStorage.UnixPermission 的详细类型介绍
+/// let permission = FileStorage.UnixPermission(rwx: [.groupRead, .ownerReadWriteExecute])
+///
+/// // 初始化 FileStorage
+/// let storage = try await FileStorage.new(
+///     eventLoop: eventLoop,
+///     storagePath: storageDir,
+///     dbConfigure: postgresConfigure,
+///     masterKey: key,
+///     logger: .init(label: "FileStorage-Testing"),
+///     filePermission: permission,
+///     debuging: .init(tdeEncrypt: false)  // 仅仅用在调试阶段，生产环境应当移除
+/// ).get()
+/// ```
+///
+/// 得到该实例后，便可创建目录:
+/// ``` swift
+/// // 提供一个路径，目录将会创建在该路径下
+/// // 注意，该路径为虚拟文件系统的路径，详情请见 StoragePath 类型
+/// let path: StoragePath = "testing/example"
+///
+/// // 在指定的路径下创建目录
+/// // 你可以指定 withIntermediateDirectories: 参数为 true 以自动创建中间目录
+/// // 否则，若中间目录不存在，将会抛出错误
+/// let dir = try await storage.createDirectory(at: path).get()
+///
+/// print(dir.name)                 // <-- print: example
+/// print(dir.path)                 // <-- print: testing/example
+/// print(dir.isExist())            // <-- print: true
+/// ```
+///
+/// 创建文件:
+/// ``` swift
+/// // 提供一个路径，文件将会创建在该路径下
+/// // 注意，该路径为虚拟文件系统的路径，详情请见 StoragePath 类型
+/// let path: StoragePath = "testing/example.txt"
+///
+/// // 在指定的路径下创建文件
+/// // 你可以指定 withIntermediateDirectories: 参数为 true 以自动创建中间目录
+/// // 否则，若中间目录不存在，将会抛出错误
+/// let file = try await storage.createFile(at: path).get()
+///
+/// print(file.name)                // <-- print: example.txt
+/// print(file.mimeType)            // <-- print: MimeType.plain "text/plain"
+/// print(file.path)                // <-- print: testing/example.txt
+/// print(file.size)                // <-- print: 0
+/// print(file.isExist())           // <-- print: true
+/// ```
+///
+/// 取得目录:
+/// ``` swift
+/// // 提供一个路径，获取该路径下的目录
+/// let path: StoragePath = "testing/example"
+///
+/// // 获取目录
+/// let dir = try await storage.getDirectory(at: path).get()
+///
+/// print(dir.name)                 // <-- print: example
+/// print(dir.path)                 // <-- print: testing/example
+/// print(dir.isExist())            // <-- print: true
+/// ```
+///
+/// 取得文件:
+/// ``` swift
+/// // 提供一个路径，获取该路径下的文件
+/// let path: StoragePath = "testing/example.txt"
+///
+/// // 获取文件
+/// let file = try await storage.getFile(at: path).get()
+///
+/// print(file.name)                // <-- print: example.txt
+/// print(file.mimeType)            // <-- print: MimeType.plain "text/plain"
+/// print(file.path)                // <-- print: testing/example.txt
+/// print(file.size)                // <-- print: 0
+/// print(file.isExist())           // <-- print: true
+/// ```
 public final class FileStorage: @unchecked Sendable {
     
     /// 默认的加密文件扩展名。

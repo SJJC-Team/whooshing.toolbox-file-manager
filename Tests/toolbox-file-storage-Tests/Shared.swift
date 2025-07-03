@@ -40,8 +40,8 @@ struct TestingShared {
         
         let testingStorageDir = FileSystemTools.resolvePath(append: "~/file_storage_testing")
         
-        let KeyStr = "Mzn/h5zDnIdi4C3yHaRMG62DhC9qYt8q4SfOCV338hY="
-        let Key = Crypto.Symm.Key(data: Data(base64Encoded: KeyStr)!)
+        let keyStr = "Mzn/h5zDnIdi4C3yHaRMG62DhC9qYt8q4SfOCV338hY="
+        let key = Crypto.Symm.Key(data: Data(base64Encoded: keyStr)!)
 
         try await Task.detached {
             let dir: DirectoryFileHandle?
@@ -60,7 +60,7 @@ struct TestingShared {
             eventLoop: eventLoop,
             storagePath: testingStorageDir,
             dbConfigure: .init(hostname: dbHost, port: dbPort, username: "clwang", password: "password", database: "postgres", tls: .disable),
-            masterKey: Key,
+            masterKey: key,
             logger: .init(label: "FileStorage-Testing"),
             filePermission: permission,
             debuging: .init(tdeEncrypt: false)

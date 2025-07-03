@@ -46,6 +46,7 @@ public extension FileStorage {
     ///   - path: 要创建的目录路径。
     ///   - createIfNeed: 是否自动创建中间目录。
     ///   - slience: 如果目录已存在，是否忽略错误。
+    ///
     /// - Returns: 创建完成或已存在的目录。
     func createDirectory(
         at path: StoragePath,
@@ -83,6 +84,7 @@ public extension FileStorage {
     }
     
     /// 获取指定路径的目录对象。
+    /// 
     /// - Parameter path: 目标目录路径。
     /// - Returns: 目录对象。
     func getDirectory(at path: StoragePath) -> EventLoopRes<Directory, Errcase> {
@@ -99,11 +101,13 @@ public extension FileStorage {
 
 public extension FileStorage {
     /// 创建一个新文件，支持设置分片大小与自动创建中间目录。
+    ///
     /// - Parameters:
     ///   - path: 文件路径。
     ///   - chunkSize: 每个分片的大小（默认为 65535 字节）。
     ///   - createIfNeed: 是否自动创建中间目录。
     ///   - slience: 如果文件已存在，是否忽略错误。
+    ///
     /// - Returns: 文件对象。
     func createFile(
         at path: StoragePath,
@@ -142,6 +146,7 @@ public extension FileStorage {
     }
     
     /// 获取指定路径的文件对象。
+    ///
     /// - Parameter path: 文件路径。
     /// - Returns: 文件对象。
     func getFile(at path: StoragePath) -> EventLoopRes<File, Errcase> {
@@ -155,6 +160,8 @@ public extension FileStorage {
         }
     }
 }
+
+// MARK: - 内部实现
 
 extension FileStorage {
     

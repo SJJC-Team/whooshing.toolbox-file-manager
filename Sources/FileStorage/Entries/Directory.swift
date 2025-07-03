@@ -24,6 +24,8 @@ import NIOFileSystem
 /// let path: StoragePath = "testing/example"
 ///
 /// // 在指定的路径下创建目录
+/// // 你可以指定 withIntermediateDirectories: 参数为 true 以自动创建中间目录
+/// // 否则，若中间目录不存在，将会抛出错误
 /// let dir = try await storage.createDirectory(at: path).get()
 ///
 /// print(dir.name)                 // <-- print: example
