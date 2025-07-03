@@ -37,7 +37,7 @@ extension __FileContentHandler {
         do {
             try await fileHandler.close()
         } catch {
-            throw File.Errcase.closeFileFailed.d("\(storage.storagePath)/\(fileCrypto.storageKey).\(FileStorage.CryptoFileExtension)").subErr(error)
+            throw File.Errcase.closeFileFailed.d("\(storage.storagePath)/\(fileCrypto.storageKey).\(storage.fileExtension)").subErr(error)
         }
     }
 }

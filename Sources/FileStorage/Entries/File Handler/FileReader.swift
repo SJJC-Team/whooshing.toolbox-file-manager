@@ -13,8 +13,11 @@ import FluentKit
 /// - `range`：读取指定的开区间范围 `[lowerBound, upperBound)` 的字节。
 /// - `closedRange`：读取指定的闭区间范围 `[lowerBound...upperBound]` 的字节。
 public enum ReadPart: Sendable, CustomStringConvertible {
+    /// 读取整个文件内容。
     case all
+    /// 读取指定的开区间范围 `[lowerBound, upperBound)` 的字节。
     case range(Range<Int64>)
+    /// 读取指定的闭区间范围 `[lowerBound...upperBound]` 的字节。
     case closedRange(ClosedRange<Int64>)
     
     public var description: String {
@@ -29,19 +32,23 @@ public enum ReadPart: Sendable, CustomStringConvertible {
 /// 文件读取操作的协议，继承自 `FileContentHandler`，定义了不同方式读取文件内容的方法。
 public protocol FileReader: FileContentHandler {
     /// 异步读取指定范围的文件内容，返回一个异步字节缓冲区通道。
+    ///
     /// - Parameter part: 指定读取的文件范围。
     /// - Returns: 异步抛出错误的字节缓冲区通道。
     func read(part: ReadPart) -> AsyncThrowingChannel<ByteBuffer, Error>
     
     /// 读取指定范围的文件内容，返回完整的字节缓冲区。
+    ///
     /// - Parameter part: 指定读取的文件范围。
     /// - Returns: 异步事件循环结果，成功时返回读取的数据，失败时返回错误。
     func readData(part: ReadPart) -> EventLoopRes<ByteBuffer, File.Errcase>
     
     /// 读取指定范围的文件内容，分块回调处理每个字节缓冲区。
+    ///
     /// - Parameters:
     ///   - part: 指定读取的文件范围。
     ///   - callback: 异步回调，每次读取到的数据块。
+    ///   
     /// - Returns: 异步事件循环结果，成功或失败。
     func readChunks(part: ReadPart, _ callback: @escaping @Sendable (ByteBuffer) async throws -> ()) -> EventLoopRes<Void, File.Errcase>
 }

@@ -8,6 +8,91 @@ import NIOAdvanced
 import NIOFileSystem
 
 /// 表示文件系统中的目录对象，支持异步查询、大小计算、子项列出与递归删除等操作。
+///
+/// 该目录类型并不储存任何真实数据，仅仅为目录句柄，因此非常轻量。
+/// 你可以使用该实例对该文件进行诸如删除，重命名，移动等等操作。
+///
+/// #### 目录基本操作
+///
+/// 若你要创建一个目录，请参考 [FileStorage+Operations.swift](../FileStorage+Operations.swift) 文件中的 `createDirectory(...)` 函数
+/// ``` swift
+/// // 首先，提供各种参数创建一个 FileStorage 实例
+/// let storage = FileStorage.new(...)
+///
+/// // 提供一个路径，目录将会创建在该路径下
+/// // 注意，该路径为虚拟文件系统的路径，详情请见 StoragePath 类型
+/// let path: StoragePath = "testing/example"
+///
+/// // 在指定的路径下创建目录
+/// let dir = try await storage.createDirectory(at: path).get()
+///
+/// print(dir.name)                 // <-- print: example
+/// print(dir.path)                 // <-- print: testing/example
+/// print(dir.isExist())            // <-- print: true
+/// ```
+///
+/// 得到目录实例后，你可以对其重新命名:
+/// ``` swift
+/// let renamedDir = try await dir.rename(as: "images").get()
+///
+/// print(renamedDir.name)          // <-- print: images
+/// print(renamedDir.path)          // <-- print: testing/images
+/// ```
+///
+/// 移动目录:
+/// ``` swift
+/// // 首先你需要有一个目标目录实例
+/// let destination: Directory = ...
+///
+/// // 将目录移动到目标目录下
+/// let movedDir = renamedDir.move(to: destination).get()
+///
+/// print(movedDir.path)            // <-- print: <目标目录的路径>/images
+/// ```
+///
+/// 你可以获取该目录的所有第一层子项目:
+/// ``` swift
+/// let items = try await movedDir.subItems().get()
+/// for item in items {
+///     if let file = item as? File {
+///         // 打印出该子文件的信息
+///         print(file.name)
+///         print(file.mimeType)
+///         print(file.path)
+///         print(file.size)
+///         print(file.isExist())
+///     } else if let dir = item as? Directory {
+///         // 打印出该子目录的信息
+///         print(dir.name)
+///         print(dir.path)
+///         print(dir.isExist())
+///     }
+/// }
+/// ```
+///
+/// 获取目录大小:
+/// ``` swift
+/// let size = try await movedDir.getSize().get()
+///
+/// print(size)
+/// ```
+///
+/// 清空目录:
+/// ``` swift
+/// // 软清空目录，默认，极其轻量化操作，不会真正删除文件，仅标记为已删除
+/// try await movedDir.empty().get()
+/// // 或者，硬清空(破坏性操作)，这将直接从数据库及文件系统中彻底删除所有的子项目，且无法撤销
+/// try await movedDir.delete(force: true).get()
+/// ```
+///
+/// 删除目录:
+/// ``` swift
+/// // 软删除目录，默认，极其轻量化操作，不会真正删除文件，仅标记为已删除
+/// try await movedDir.delete().get()
+/// // 或者，硬删除(破坏性操作)，这将直接从数据库及文件系统中彻底删除该目录数据，且无法撤销
+/// // 需要注意的是，删除一个文件夹也会删除其所有的子项目，因此请谨慎操作
+/// try await movedDir.delete(force: true).get()
+/// ```
 public struct Directory: StorageEntry, Sendable {
     
     /// 目录 ID，根目录为 nil。
@@ -44,7 +129,7 @@ public struct Directory: StorageEntry, Sendable {
             try index.getId()
         }
         self.name = index.name
-        self.path = parent == nil ? "<<ROOT>>" : (parent! + index.name)
+        self.path = parent == nil ? .root : (parent! + index.name)
         self.createdAt = index.createdAt
         self.updatedAt = index.updatedAt
         self.storage = storage
@@ -56,7 +141,7 @@ public extension Directory {
     /// 是否为根目录。
     var isRoot: Bool { self.id == nil }
     
-    /// 检查目录是否在数据库中存在（同步）。
+    /// 检查该目录是否存在（同步）。
     func isExist() -> Bool {
         if let id = self.id {
             return (try? FileIndex.query(on: storage.indexDatabase).filter(\.$id == id).first().wait()) != nil
@@ -65,7 +150,7 @@ public extension Directory {
         }
     }
     
-    /// 检查目录是否在数据库中存在（异步）。
+    /// 检查该目录是否存在（异步）。
     func isExist() async -> Bool {
         if let id = self.id {
             return (try? await FileIndex.query(on: storage.indexDatabase).filter(\.$id == id).first()) != nil
@@ -75,6 +160,8 @@ public extension Directory {
     }
     
     /// 获取目录下所有子项（文件和目录）的总大小。
+    ///
+    /// 该操作需要进行迭代遍历子项目大小进行计算，因此较为耗时。
     func getSize() -> EventLoopRes<Int64, FileStorage.Errcase> {
         subitems().wrapped
             .flatMapEach(on: storage.eventLoop) {
@@ -86,10 +173,74 @@ public extension Directory {
             }
     }
     
-    /// 获取当前目录下的所有子项（文件与目录），可包含软删除的内容。
-    /// - Parameter withDeleted: 是否包含软删除项。
-    /// - Returns: 子项数组。
-    func subitems(withDeleted: Bool = false) -> EventLoopRes<[any StorageEntry], Errcase> {
+    /// 获取当前目录下的所有子项（文件与目录）
+    ///
+    /// - Returns: 第一层子项数组。
+    func subitems() -> EventLoopRes<[any StorageEntry], Errcase> {
+        __subitems(withDeleted: false)
+    }
+    
+    /// 清空目录内容。
+    ///
+    /// - Parameter force: 是否强制删除，否则为软删除
+    ///
+    /// 进行软删除，则数据被标记为被删除，但并未实际删除，可进行再恢复(并不提供该 API)。
+    /// 软删除是零拷贝轻量操作，不会进行任何文件系统操作
+    ///
+    /// - Warning: 若指定 force，则连同文件数据及文件索引都会一并从硬盘中删除，该操作无法撤销。
+    /// 另外，删除一个目录，则连同其下的所有子目录和子文件都会一并删除，若指定了 force，该操作无法撤销，
+    /// 您需要自己承担该风险。
+    func empty(force: Bool = false) -> EventLoopRes<Void, Errcase> {
+        __subitems(withDeleted: force).wrapped
+            .flatMapEach(on: storage.eventLoop) {
+                $0.delete(force: force).wrapped
+            }
+            .withError(Errcase.emptyDirectoryFailed)
+    }
+    
+    /// 删除目录，可选择软删除或硬删除。
+    ///
+    /// - Parameter force: 若为 true，则从数据库和文件系统中物理删除 **所有子项**。
+    ///
+    /// 进行软删除，则数据被标记为被删除，但并未实际删除，可进行再恢复(并不提供该 API)。
+    /// 软删除是零拷贝轻量操作，不会进行任何文件系统操作
+    ///
+    /// - Warning: 若指定 force，则连同文件数据及文件索引都会一并从硬盘中删除，该操作无法撤销。
+    /// 另外，删除一个目录，则连同其下的所有子目录和子文件都会一并删除，若指定了 force，该操作无法撤销，
+    /// 您需要自己承担该风险。
+    func delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
+        __delete(force: force)
+    }
+    
+    /// 重命名该目录。
+    ///
+    /// 零拷贝轻量操作，不会进行任何文件系统操作
+    ///
+    /// - Parameter name: 新名称。
+    ///
+    /// - Returns: 更新后的目录对象。
+    func rename(as name: String) -> EventLoopRes<Directory, Errcase> {
+        __rename(as: name)
+    }
+    
+    /// 将目录移动到指定目录下，支持改名。
+    ///
+    /// 零拷贝轻量操作，不会进行任何文件系统操作
+    ///
+    /// - Parameters:
+    ///   - dir: 目标目录。
+    ///   - name: 可选的新名称。
+    ///
+    /// - Returns: 更新后的目录对象。
+    func move(to dir: Directory, as name: String? = nil) -> EventLoopRes<Directory, Errcase> {
+        __move(to: dir, as: name)
+    }
+}
+
+// MARK: - 内部实现
+
+extension Directory {
+    func __subitems(withDeleted: Bool = false) -> EventLoopRes<[any StorageEntry], Errcase> {
         
         let r: QueryBuilder<FileIndex>
         
@@ -121,19 +272,7 @@ public extension Directory {
         }
     }
     
-    /// 清空目录内容。
-    /// - Parameter force: 是否强制删除（包括软删除项）。
-    func empty(force: Bool = false) -> EventLoopRes<Void, Errcase> {
-        subitems(withDeleted: force).wrapped
-            .flatMapEach(on: storage.eventLoop) {
-                $0.delete(force: force).wrapped
-            }
-            .withError(Errcase.emptyDirectoryFailed)
-    }
-    
-    /// 删除目录，可选择软删除或硬删除。
-    /// - Parameter force: 若为 true，则从数据库和文件系统中物理删除所有子项。
-    func delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
+    func __delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
         guard
             !self.isRoot,
             let id = self.id
@@ -171,7 +310,7 @@ public extension Directory {
                     try await withThrowingTaskGroup(of: Void.self) { group in
                         for row in fileList {
                             group.addTask {
-                                let path = FilePath("\(storage.storagePath)/\(try row.decode(String.self)).\(FileStorage.CryptoFileExtension)")
+                                let path = FilePath("\(storage.storagePath)/\(try row.decode(String.self)).\(storage.fileExtension)")
                                 try await FileSystem.shared.removeItem(at: path)
                             }
                         }
@@ -242,10 +381,7 @@ public extension Directory {
         }
     }
     
-    /// 重命名当前目录。
-    /// - Parameter name: 新名称。
-    /// - Returns: 更新后的目录对象。
-    func rename(as name: String) -> EventLoopRes<Directory, Errcase> {
+    func __rename(as name: String) -> EventLoopRes<Directory, Errcase> {
         guard !self.isRoot else {
             return storage.eventLoop.makeFailedResult(Errcase.renameDirectoryFailed, "不可重命名根目录")
         }
@@ -260,12 +396,7 @@ public extension Directory {
         }
     }
     
-    /// 将目录移动到指定目录下，支持改名。
-    /// - Parameters:
-    ///   - dir: 目标目录。
-    ///   - name: 可选的新名称。
-    /// - Returns: 更新后的目录对象。
-    func move(to dir: Directory, as name: String? = nil) -> EventLoopRes<Directory, Errcase> {
+    func __move(to dir: Directory, as name: String? = nil) -> EventLoopRes<Directory, Errcase> {
         guard !self.isRoot else {
             return storage.eventLoop.makeFailedResult(Errcase.moveDirectoryFailed, "不可操作根目录")
         }

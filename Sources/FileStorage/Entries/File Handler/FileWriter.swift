@@ -28,57 +28,91 @@ public enum WriteMethod: Sendable {
 /// 文件写入操作的协议，继承自 `FileContentHandler`，定义了写入、插入、替换和删除字节的方法。
 public protocol FileWriter: FileContentHandler {
     /// 在指定位置以给定方式写入字节缓冲区数据。
+    ///
     /// - Parameters:
     ///   - at: 字节索引位置。
     ///   - bytes: 要写入的字节缓冲区。
     ///   - method: 写入方式，插入或替换。
+    ///
     /// - Returns: 表示写入结果的异步事件循环结果，成功或带错误信息。
+    ///
+    /// 该写入操作为原子操作，保证整体执行完成。若出错，则保证整体不执行，原数据不受任何影响
     func write(at: ByteIndex, bytes: ByteBuffer, method: WriteMethod) -> EventLoopResult<Void, BscError<File.Errcase>>
     
     /// 从异步字节流通道在指定位置以给定方式写入数据。
+    ///
     /// - Parameters:
     ///   - at: 字节索引位置。
     ///   - from: 异步字节缓冲区通道。
     ///   - method: 写入方式，插入或替换。
+    ///
     /// - Returns: 表示写入结果的异步事件循环结果。
+    ///
+    /// 该写入操作带有 BackPressure 功能，会自动阻塞提供者的数据流，防止内存堆砌
+    ///
+    /// 该写入操作为原子操作，保证整体执行完成。若出错，则保证整体不执行，原数据不受任何影响
     func write(at: ByteIndex, from: AsyncThrowingChannel<ByteBuffer, Error>, method: WriteMethod) -> EventLoopResult<Void, BscError<File.Errcase>>
     
     /// 在指定位置插入字节缓冲区数据。
+    ///
     /// - Parameters:
     ///   - at: 插入位置。
     ///   - bytes: 要插入的数据。
+    ///
     /// - Returns: 异步事件循环结果。
+    ///
+    /// 该写入操作为原子操作，保证整体执行完成。若出错，则保证整体不执行，原数据不受任何影响
     func insert(at: ByteIndex, bytes: ByteBuffer) -> EventLoopResult<Void, BscError<File.Errcase>>
     
     /// 在指定位置替换字节缓冲区数据。
+    ///
     /// - Parameters:
     ///   - at: 替换位置。
     ///   - bytes: 替换的新数据。
+    ///
     /// - Returns: 异步事件循环结果。
+    ///
+    /// 该写入操作为原子操作，保证整体执行完成。若出错，则保证整体不执行，原数据不受任何影响
     func replace(at: ByteIndex, bytes: ByteBuffer) -> EventLoopResult<Void, BscError<File.Errcase>>
     
     /// 从异步字节流通道在指定位置插入数据。
+    ///
     /// - Parameters:
     ///   - at: 插入位置。
     ///   - from: 异步字节缓冲区通道。
+    ///
     /// - Returns: 异步事件循环结果。
+    ///
+    /// 该写入操作带有 BackPressure 功能，会自动阻塞提供者的数据流，防止内存堆砌
+    ///
+    /// 该写入操作为原子操作，保证整体执行完成。若出错，则保证整体不执行，原数据不受任何影响
     func insert(at: ByteIndex, from: AsyncThrowingChannel<ByteBuffer, Error>) -> EventLoopResult<Void, BscError<File.Errcase>>
     
     /// 从异步字节流通道在指定位置替换数据。
+    ///
     /// - Parameters:
     ///   - at: 替换位置。
     ///   - from: 异步字节缓冲区通道。
+    ///
     /// - Returns: 异步事件循环结果。
+    ///
+    /// 该写入操作为原子操作，保证整体执行完成。若出错，则保证整体不执行，原数据不受任何影响
     func replace(at: ByteIndex, from: AsyncThrowingChannel<ByteBuffer, Error>) -> EventLoopResult<Void, BscError<File.Errcase>>
     
     /// 删除指定范围内的字节。
+    /// 
     /// - Parameter in: 要删除的字节范围（开区间）。
     /// - Returns: 异步事件循环结果。
+    ///
+    /// 该写入操作为原子操作，保证整体执行完成。若出错，则保证整体不执行，原数据不受任何影响
     func remove(in: Range<Int64>) -> EventLoopResult<Void, BscError<File.Errcase>>
     
     /// 删除指定范围内的字节。
+    ///
     /// - Parameter in: 要删除的字节范围（闭区间）。
     /// - Returns: 异步事件循环结果。
+    ///
+    /// 该写入操作为原子操作，保证整体执行完成。若出错，则保证整体不执行，原数据不受任何影响
     func remove(in: ClosedRange<Int64>) -> EventLoopResult<Void, BscError<File.Errcase>>
 }
 

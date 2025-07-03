@@ -11,6 +11,156 @@ import NIOAdvanced
 public typealias FileReadWriter = FileReader & FileWriter
 
 /// 表示一个加密存储系统中的文件对象，包含元数据与读写操作接口。
+///
+/// 该文件类型并不储存任何真实数据，仅仅为文件句柄，因此非常轻量。
+/// 你可以使用该实例对该文件进行诸如删除，重命名，打开，读写，关闭，移动等等操作。
+///
+/// #### 文件基本操作
+///
+/// 若你要创建一个文件，请参考 [FileStorage+Operations.swift](../FileStorage+Operations.swift) 文件中的 `createFile(...)` 函数
+/// ``` swift
+/// // 首先，提供各种参数创建一个 FileStorage 实例
+/// let storage = FileStorage.new(...)
+///
+/// // 提供一个路径，文件将会创建在该路径下
+/// // 注意，该路径为虚拟文件系统的路径，详情请见 StoragePath 类型
+/// let path: StoragePath = "testing/example.txt"
+///
+/// // 在指定的路径下创建文件
+/// let file = try await storage.createFile(at: path).get()
+///
+/// print(file.name)                // <-- print: example.txt
+/// print(file.mimeType)            // <-- print: MimeType.plain "text/plain"
+/// print(file.path)                // <-- print: testing/example.txt
+/// print(file.size)                // <-- print: 0
+/// print(file.isExist())           // <-- print: true
+/// ```
+///
+/// 得到文件实例后，你可以对其重新命名:
+/// ``` swift
+/// let renamedFile = try await file.rename(as: "image.png").get()
+///
+/// print(renamedFile.name)         // <-- print: image.png
+/// print(renamedFile.mimeType)     // <-- print: MimeType.png "image/png"
+/// print(renamedFile.path)         // <-- print: testing/image.png
+/// ```
+///
+/// 移动文件:
+/// ``` swift
+/// // 首先你需要有一个目标目录实例
+/// // 如何得到一个目录实例，请见 Directory 的详细类型说明
+/// let destination: Directory = ...
+///
+/// // 将文件移动到目标目录下
+/// let movedFile = renamedFile.move(to: destination).get()
+///
+/// print(movedFile.path)           // <-- print: <目标目录的路径>/image.png
+/// ```
+///
+/// 删除文件:
+/// ``` swift
+/// // 软删除文件，默认，极其轻量化操作，不会真正删除文件，仅标记为已删除
+/// try await movedFile.delete().get()
+/// // 或者，硬删除(破坏性操作)，这将直接从数据库及文件系统中彻底删除该文件数据，且无法撤销
+/// try await movedFile.delete(force: true).get()
+/// ```
+///
+/// #### 文件读写
+///
+/// 要对文件进行读写，首先需要打开该文件，以此读取或写入其中的数据，本类型提供:
+///     - 打开文件仅用于读取
+///     - 打开文件仅用于写
+///     - 打开文件可用于读写
+///
+/// 打开文件用于只读:
+/// ``` swift
+/// // 首先获取文件实例
+/// let file: File = ...
+///
+/// // 打开文件并读取其所有的数据
+/// // 关于 `reader`，请见 `FileReader` 的详细类型说明
+/// let fileData = try await file.withReader { reader in
+///     reader.readData(part: .all)
+/// }.get()
+/// ```
+///
+/// 打开文件用于写:
+/// ``` swift
+/// // 准备好要写入的数据
+/// let dataToWrite: ByteBuffer = ...
+///
+/// // 打开文件并将数据写入
+/// // 关于 `writer`，请见 `FileWriter` 的详细类型说明
+/// try await file.withWriter { writer in
+///     writer.write(at: .begin(), bytes: dataToWrite)
+/// }.get()
+/// ```
+///
+/// 打开文件用于读写:
+/// ``` swift
+/// // 准备好要写入的数据
+/// let dataToWrite: ByteBuffer = ...
+///
+/// // 打开文件将数据写入，之后将所有内容读出
+/// // 关于 `readWriter`，请见 `FileReader` 和 `FileWriter` 的详细类型说明
+/// // `FileReadWriter` 即为 `FileReader & FileWriter`
+/// let fileData = try await file.withReadWriter { readWriter in
+///     readWriter.write(at: .begin(), bytes: dataToWrite).flatMap {
+///         readWriter.readData(part: .all)
+///     }
+/// }.get()
+///
+/// // `dataToWrite` 以及 `fileData` 应当是一样的
+/// print(dataToWrite.readableBytes)
+/// print(fileData.readableBytes)
+/// ```
+/// 你也可以自己控制 Reader Writer 以及 ReadWriter 的生命周期，分别使用这些方法替代即可：
+///
+/// 打开一个文件或获取其读句柄
+/// ``` swift
+/// let reader = try await file.openForRead().get()
+///
+/// // 进行一些操作
+///
+/// // 关闭该文件，务必进行此操作，泄漏的文件句柄会引发程序崩溃!
+/// try await reader.close()
+/// ```
+///
+/// 或只写:
+/// ``` swift
+/// let writer = try await file.openForWrite().get()
+///
+/// // ...
+///
+/// try await writer.close()
+/// ```
+///
+/// 或读写:
+/// ``` swift
+/// let readWriter = try await file.openForReadWrite().get()
+///
+/// // ...
+///
+/// try await readWriter.close()
+/// ```
+///
+/// - Warning: 手动控制 Reader Writer 以及 ReadWriter 的生命周期时，您必须
+/// 自己在每次完成动作后手动调用 `.close()` 函数，包括出错的时候。因此，你可能需要
+/// 像以下如此处理读写，确保每次句柄都能正常关闭。
+/// ``` swift
+/// let readWriter = try await file.openForReadAndWrite().get()
+/// do {
+///     let res = try await action(readWriter).get()
+///
+///     // 进行你的读写操作
+///
+///     try await readWriter.close()
+///     return res
+/// } catch {
+///     try? await readWriter.close()
+///     throw error
+/// }
+/// ```
 public struct File: StorageEntry, Sendable {
     /// 文件唯一标识符。
     public let id: UUID
@@ -27,6 +177,7 @@ public struct File: StorageEntry, Sendable {
     /// 文件最后更新时间。
     public var updatedAt: Date { fileIndex.updatedAt }
     
+    /// 文件存储系统引用。
     public unowned let storage: FileStorage
     
     public typealias Errcase = FileStorage.Errcase
@@ -62,113 +213,107 @@ public struct File: StorageEntry, Sendable {
 
 public extension File {
     /// 打开文件并传入只读句柄执行异步操作。
+    ///
+    /// - Parameters:
+    ///     - action: 传入只读句柄，执行自定义动作
+    /// - Returns: 本次自定义动作的结果，或抛出错误
     func withReader<T, G>(_ action: @escaping @Sendable (FileReader) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
-        storage.eventLoop.makeFutureWithTask {
-            let reader = try await openForRead().get()
-            do {
-                let res = try await action(reader).get()
-                try await reader.close()
-                return res
-            } catch {
-                try? await reader.close()
-                throw error
-            }
-        }.withError(Errcase.openFileFailed)
+        __withReader(action)
     }
     
     /// 打开文件并传入只写句柄执行异步操作。
+    ///
+    /// - Parameters:
+    ///     - action: 传入只写句柄，执行自定义动作
+    /// - Returns: 本次自定义动作的结果，或抛出错误
     func withWriter<T, G>(_ action: @escaping @Sendable (FileWriter) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
-        storage.eventLoop.makeFutureWithTask {
-            let writer = try await openForWrite().get()
-            do {
-                let res = try await action(writer).get()
-                try await writer.close()
-                return res
-            } catch {
-                try? await writer.close()
-                throw error
-            }
-        }.withError(Errcase.openFileFailed)
+        __withWriter(action)
     }
     
     /// 打开文件并传入读写句柄执行异步操作。
+    ///
+    /// - Parameters:
+    ///     - action: 传入只写句柄，执行自定义动作
+    /// - Returns: 本次自定义动作的结果，或抛出错误
     func withReadWriter<T, G>(_ action: @escaping @Sendable (FileReadWriter) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
-        storage.eventLoop.makeFutureWithTask {
-            let readWriter = try await openForReadAndWrite().get()
-            do {
-                let res = try await action(readWriter).get()
-                try await readWriter.close()
-                return res
-            } catch {
-                try? await readWriter.close()
-                throw error
-            }
-        }.withError(Errcase.openFileFailed)
+        __withReadWriter(action)
     }
 }
 
 public extension File {
     /// 打开只读文件句柄。
+    ///
+    /// - Returns: 文件的只读句柄，请见 `FileReader` 的详细类型说明
+    ///
+    /// - Warning: 手动控制 Reader 的生命周期时，您必须
+    /// 自己在每次完成动作后手动调用 `.close()` 函数，包括出错的时候。因此，你可能需要
+    /// 像以下如此处理读写，确保每次句柄都能正常关闭。
+    /// ``` swift
+    /// let reader = try await file.openForRead().get()
+    /// do {
+    ///     let res = try await action(reader).get()
+    ///
+    ///     // 进行你的读操作
+    ///
+    ///     try await reader.close()
+    ///     return res
+    /// } catch {
+    ///     try? await reader.close()
+    ///     throw error
+    /// }
+    /// ```
     func openForRead() async -> Res<FileReader, Errcase> {
-        await .async { () throws(BscError<Errcase>) in
-            let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
-                try await makeFileHandleParas()
-            }
-            let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
-                try await FileSystem.shared.openFile(forReadingAt: filePath, options: .init())
-            }
-            return Reader(
-                fileIndex: fileIndex,
-                fileCrypto: fileCrypto,
-                key: key,
-                filePath: path,
-                fileRealPath: filePath,
-                fileHandler: fileHandler,
-                storage: storage
-            )
-        }
+        await __openForRead()
     }
     
     /// 打开只写文件句柄。
+    ///
+    /// - Returns: 文件的只写句柄，请见 `FileWriter` 的详细类型说明
+    ///
+    /// - Warning: 手动控制 Writer 的生命周期时，您必须
+    /// 自己在每次完成动作后手动调用 `.close()` 函数，包括出错的时候。因此，你可能需要
+    /// 像以下如此处理读写，确保每次句柄都能正常关闭。
+    /// ``` swift
+    /// let writer = try await file.openForWrite().get()
+    /// do {
+    ///     let res = try await action(writer).get()
+    ///
+    ///     // 进行你的写操作
+    ///
+    ///     try await writer.close()
+    ///     return res
+    /// } catch {
+    ///     try? await writer.close()
+    ///     throw error
+    /// }
+    /// ```
     func openForWrite() async -> Res<FileWriter, Errcase> {
-        await .async { () throws(BscError<Errcase>) in
-            let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
-                try await makeFileHandleParas()
-            }
-            let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
-                try await FileSystem.shared.openFile(forWritingAt: filePath, options: .modifyFile(createIfNecessary: false))
-            }
-            return Writer(
-                fileIndex: fileIndex,
-                fileCrypto: fileCrypto,
-                key: key,
-                filePath: path,
-                fileRealPath: filePath,
-                fileHandler: fileHandler,
-                storage: storage
-            )
-        }
+        await __openForWrite()
     }
     
     /// 打开读写文件句柄。
+    ///
+    /// - Returns: 文件的读写句柄，请见 `FileReadWriter`(`FileReader & FileWriter`) 的详细类型说明
+    ///
+    /// - Warning: 手动控制 ReadWriter 的生命周期时，您必须
+    /// 自己在每次完成动作后手动调用 `.close()` 函数，包括出错的时候。因此，你可能需要
+    /// 像以下如此处理读写，确保每次句柄都能正常关闭。
+    /// ``` swift
+    /// let readWriter = try await file.openForReadAndWrite().get()
+    /// do {
+    ///     let res = try await action(readWriter).get()
+    ///
+    ///     // 进行你的读写操作
+    ///
+    ///     try await readWriter.close()
+    ///     return res
+    /// } catch {
+    ///     try? await readWriter.close()
+    ///     throw error
+    /// }
+    /// ```
     func openForReadAndWrite() async -> Res<FileReadWriter, Errcase> {
-        await .async { () throws(BscError<Errcase>) in
-            let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
-                try await makeFileHandleParas()
-            }
-            let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
-                try await FileSystem.shared.openFile(forReadingAndWritingAt: filePath, options: .modifyFile(createIfNecessary: false))
-            }
-            return ReaderAndWriter(
-                fileIndex: fileIndex,
-                fileCrypto: fileCrypto,
-                key: key,
-                filePath: path,
-                fileRealPath: filePath,
-                fileHandler: fileHandler,
-                storage: storage
-            )
-        }
+        await __openForReadAndWrite()
     }
 }
 
@@ -188,9 +333,172 @@ public extension File {
         storage.eventLoop.makeSucceededResult(size)
     }
     
-    /// 删除文件。
-    /// - Parameter force: 是否强制删除（同时移除加密文件与数据库记录）。
+    /// 删除该文件，可选择软删除或硬删除。
+    ///
+    /// - Parameter force: 若为 true，则从数据库和文件系统中物理删除文件及文件数据。
+    ///
+    /// 进行软删除，则数据被标记为被删除，但并未实际删除，可进行再恢复(并不提供该 API)。
+    /// 软删除是零拷贝轻量操作，不会进行任何文件系统操作
+    ///
+    /// - Warning: 若指定 force，则连同文件数据及文件索引都会一并从硬盘中删除，该操作无法撤销，
+    /// 您需要自己承担该风险。
     func delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
+        __delete(force: force)
+    }
+    
+    /// 重命名该文件。
+    ///
+    /// 零拷贝轻量操作，不会进行任何文件系统操作
+    ///
+    /// - Parameter name: 新名称。
+    ///
+    /// - Returns: 更新后的文件对象。
+    func rename(as name: String) -> EventLoopRes<File, Errcase> {
+        fileIndex.name = name
+        fileIndex.mimeType = name.fileExtension == nil ? .unknow : .init(fileExtension: name.fileExtension!)
+        return fileIndex.update(on: storage.indexDatabase)
+            .withError(Errcase.renameFileFailed, "数据库更新失败")
+            .flatMapThrowing
+        { () throws(BscError<Errcase>) in
+            try required(throws: Errcase.renameFileFailed, "未知错误") {
+                try .init(from: fileIndex, parent: self.path.parent, storage: storage)
+            }
+        }
+    }
+    
+    /// 将目文件动到指定目录下，支持改名。
+    ///
+    /// 零拷贝轻量操作，不会进行任何文件系统操作
+    ///
+    /// - Parameters:
+    ///   - dir: 目标目录。
+    ///   - name: 可选的新名称。
+    ///
+    /// - Returns: 更新后的文件对象。
+    func move(to dir: Directory, as name: String? = nil) -> EventLoopRes<File, Errcase> {
+        fileIndex.$parent.id = dir.fileIndex.isRoot ? nil : dir.id
+        if let name = name {
+            fileIndex.name = name
+        }
+        return fileIndex.update(on: storage.indexDatabase)
+            .withError(Errcase.moveFileFailed, "数据库更新失败")
+            .flatMapThrowing
+        { () throws(BscError<Errcase>) in
+            try required(throws: Errcase.moveFileFailed, "未知错误") {
+                try .init(from: fileIndex, parent: self.path.parent, storage: storage)
+            }
+        }
+    }
+}
+
+// MARK: - 内部实现
+
+extension File {
+    func __withReader<T, G>(_ action: @escaping @Sendable (FileReader) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
+        storage.eventLoop.makeFutureWithTask {
+            let reader = try await openForRead().get()
+            do {
+                let res = try await action(reader).get()
+                try await reader.close()
+                return res
+            } catch {
+                try? await reader.close()
+                throw error
+            }
+        }.withError(Errcase.openFileFailed)
+    }
+    
+    /// 打开文件并传入只写句柄执行异步操作。
+    func __withWriter<T, G>(_ action: @escaping @Sendable (FileWriter) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
+        storage.eventLoop.makeFutureWithTask {
+            let writer = try await openForWrite().get()
+            do {
+                let res = try await action(writer).get()
+                try await writer.close()
+                return res
+            } catch {
+                try? await writer.close()
+                throw error
+            }
+        }.withError(Errcase.openFileFailed)
+    }
+    
+    /// 打开文件并传入读写句柄执行异步操作。
+    func __withReadWriter<T, G>(_ action: @escaping @Sendable (FileReadWriter) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
+        storage.eventLoop.makeFutureWithTask {
+            let readWriter = try await openForReadAndWrite().get()
+            do {
+                let res = try await action(readWriter).get()
+                try await readWriter.close()
+                return res
+            } catch {
+                try? await readWriter.close()
+                throw error
+            }
+        }.withError(Errcase.openFileFailed)
+    }
+    
+    func __openForRead() async -> Res<FileReader, Errcase> {
+        await .async { () throws(BscError<Errcase>) in
+            let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
+                try await makeFileHandleParas()
+            }
+            let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
+                try await FileSystem.shared.openFile(forReadingAt: filePath, options: .init())
+            }
+            return Reader(
+                fileIndex: fileIndex,
+                fileCrypto: fileCrypto,
+                key: key,
+                filePath: path,
+                fileRealPath: filePath,
+                fileHandler: fileHandler,
+                storage: storage
+            )
+        }
+    }
+    
+    func __openForWrite() async -> Res<FileWriter, Errcase> {
+        await .async { () throws(BscError<Errcase>) in
+            let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
+                try await makeFileHandleParas()
+            }
+            let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
+                try await FileSystem.shared.openFile(forWritingAt: filePath, options: .modifyFile(createIfNecessary: false))
+            }
+            return Writer(
+                fileIndex: fileIndex,
+                fileCrypto: fileCrypto,
+                key: key,
+                filePath: path,
+                fileRealPath: filePath,
+                fileHandler: fileHandler,
+                storage: storage
+            )
+        }
+    }
+    
+    func __openForReadAndWrite() async -> Res<FileReadWriter, Errcase> {
+        await .async { () throws(BscError<Errcase>) in
+            let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
+                try await makeFileHandleParas()
+            }
+            let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
+                try await FileSystem.shared.openFile(forReadingAndWritingAt: filePath, options: .modifyFile(createIfNecessary: false))
+            }
+            return ReaderAndWriter(
+                fileIndex: fileIndex,
+                fileCrypto: fileCrypto,
+                key: key,
+                filePath: path,
+                fileRealPath: filePath,
+                fileHandler: fileHandler,
+                storage: storage
+            )
+        }
+    }
+    
+    func __delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
         if force {
             return storage.db.eventLoop.makeFutureWithTask {
                 try await getRealFilePath(withDeleted: true).0
@@ -222,36 +530,6 @@ public extension File {
                     fileIndex.delete(force: false, on: storage.db)
                         .withError(Errcase.deleteFileFailed, "数据库 \(FileIndex.name) 软删除记录失败")
                 }
-        }
-    }
-    
-    /// 重命名文件。
-    func rename(as name: String) -> EventLoopRes<File, Errcase> {
-        fileIndex.name = name
-        fileIndex.mimeType = name.fileExtension == nil ? .unknow : .init(fileExtension: name.fileExtension!)
-        return fileIndex.update(on: storage.indexDatabase)
-            .withError(Errcase.renameFileFailed, "数据库更新失败")
-            .flatMapThrowing
-        { () throws(BscError<Errcase>) in
-            try required(throws: Errcase.renameFileFailed, "未知错误") {
-                try .init(from: fileIndex, parent: self.path.parent, storage: storage)
-            }
-        }
-    }
-    
-    /// 移动文件到指定目录，可选重命名。
-    func move(to dir: Directory, as name: String? = nil) -> EventLoopRes<File, Errcase> {
-        fileIndex.$parent.id = dir.fileIndex.isRoot ? nil : dir.id
-        if let name = name {
-            fileIndex.name = name
-        }
-        return fileIndex.update(on: storage.indexDatabase)
-            .withError(Errcase.moveFileFailed, "数据库更新失败")
-            .flatMapThrowing
-        { () throws(BscError<Errcase>) in
-            try required(throws: Errcase.moveFileFailed, "未知错误") {
-                try .init(from: fileIndex, parent: self.path.parent, storage: storage)
-            }
         }
     }
 }
@@ -291,7 +569,7 @@ extension File {
         }
          
         return (
-            .init("\(self.storage.storagePath)/\(fileCrypto.storageKey).\(FileStorage.CryptoFileExtension)"),
+            .init("\(self.storage.storagePath)/\(fileCrypto.storageKey).\(storage.fileExtension)"),
             fileCrypto
         )
     }

@@ -1,12 +1,12 @@
 import Fluent
 import Foundation
+import Crypto
 import Cryptos
 import DataConvertable
 import ErrorHandle
 import NIOCore
 import NIOAdvanced
 import NIOFileSystem
-import Crypto
 
 public extension FileStorage {
     /// FileStorage 所有可能抛出的错误类型枚举，按功能划分为数据库错误、目录操作错误、文件操作错误。
@@ -41,11 +41,12 @@ public extension FileStorage {
 
 public extension FileStorage {
     /// 创建一个目录，如果目录已存在则根据 `slience` 决定是否忽略。
+    ///
     /// - Parameters:
     ///   - path: 要创建的目录路径。
     ///   - createIfNeed: 是否自动创建中间目录。
     ///   - slience: 如果目录已存在，是否忽略错误。
-    /// - Returns: 新创建或已存在的目录。
+    /// - Returns: 创建完成或已存在的目录。
     func createDirectory(
         at path: StoragePath,
         withIntermediateDirectories createIfNeed: Bool = false,
@@ -310,7 +311,7 @@ extension FileStorage {
             
             guard
                 FileManager.default.createFile(
-                    atPath: "\(self.storagePath)/\(fileCrypto.storageKey).\(Self.CryptoFileExtension)",
+                    atPath: "\(self.storagePath)/\(fileCrypto.storageKey).\(self.fileExtension)",
                     contents: nil,
                     attributes: permissionAttributes
                 )

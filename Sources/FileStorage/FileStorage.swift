@@ -1,24 +1,43 @@
-import Fluent
-import FluentSQL
 import FluentPostgresDriver
 import ErrorHandle
 import Cryptos
 import Foundation
 import NIOAdvanced
-import NIOFileSystem
 
-/// 管理加密文件存储的核心类，支持使用 PostgreSQL 作为索引数据库。
-/// 提供事务性索引记录、透明加密（TDE）控制，并允许设置存储权限。
+/// 提供文件加密存储，支持流式解密 Backpressure 读取以及加密写入。
+///
+/// 该系统使用 PostgreSQL 存取文件索引以及加密信息，使用分块算法使得许多数据操作无需真正干预磁盘，
+/// 而只需要修改数据库索引，显著提高效率。
+/// 且同时使用密钥派生的方式对每个文件分别加密，因此不在数据库中存储机密信息也可做到安全加密。
+///
+/// 数据库以及文件操作实现了原子性操作，保证动作成原子完成即便遇到不可抗事件
+///
+/// 使用时需要指定用于加密的加密密钥，数据库连接参数，存储目录，权限设置等等参数。
+/// 一旦初始化完成即可进行各种文件系统操作
+///
+/// 初始化操作，详见 `FileStorage.new(eventLoop: storagePath: dbConfig: masterkey: ...)` 工厂函数
 public final class FileStorage: @unchecked Sendable {
     
     /// 默认的加密文件扩展名。
-    public static let CryptoFileExtension = "wooclassified"
+    ///
+    /// 具体另见 `FileStorage.new(eventLoop: storagePath: dbConfig: masterkey: ...)` 工厂函数
+    public static let DefaultCryptoFileExtension = "wooclassified"
     
-    /// 控制调试功能的配置结构体。
-    /// - 参数 tdeEncrypt: 是否启用透明加密。
+    /// 控制调试功能的配置结构体，为 FileStorage 运行指定调试参数
+    ///
+    /// 只有调试该文件存储系统时使用，可以设定数据库是否进行 TDE 加密。
+    /// 具体另见 `FileStorage.new(eventLoop: storagePath: dbConfig: masterkey: ...)` 工厂函数
+    ///
+    /// - Warning: 仅在测试和开发环境中适用，否则将会面临数据库明文存储的风险
     public struct Debuging: Sendable {
-        let tdeEncrypt: Bool
-        init(tdeEncrypt: Bool = true) {
+        /// 是否启用 PostgreSQL tde 加密功能
+        ///
+        /// 一般的数据库中并未配置 tde 加密扩展，这通常需要修改数据库服务器配置文件
+        /// 因此，为了方便测试，可暂时取消其加密机制
+        public let tdeEncrypt: Bool
+        
+        /// 初始化该调试参数
+        public init(tdeEncrypt: Bool = true) {
             self.tdeEncrypt = tdeEncrypt
         }
     }
@@ -31,11 +50,11 @@ public final class FileStorage: @unchecked Sendable {
     /// 日志记录器。
     public let logger: Logger
     /// 文件存储的根目录。
-    public var rootDir: Directory {
-        self.__rootDir!
-    }
+    public var rootDir: Directory { self.__rootDir! }
     /// 当前文件系统使用的权限设置（如果有）。
     public let filePermission: UnixPermission?
+    /// 加密文件所使用的后缀名，默认为 `FileStorage.DefaultCryptoFileExtension`
+    public let fileExtension: String
     
     let storagePath: String
     let indexDatabase: PGDatabase
@@ -53,16 +72,21 @@ public final class FileStorage: @unchecked Sendable {
     ///   - dbConfigure: PostgreSQL 数据库配置。
     ///   - masterKey: 主加密密钥。
     ///   - logger: 日志记录器。
+    ///   - fileExtension: 加密文件的后缀名，默认为 `FileStorage.DefaultCryptoFileExtension`
     ///   - filePermission: 可选的文件权限配置。
     ///   - debuging: 可选的调试参数。
     ///
     /// - Returns: 包含初始化完成的 FileStorage 实例或错误。
+    ///
+    /// - Warning: 该初始化函数并不会自主根据 `storagePath` 创建文件夹，请保证该文件夹存在于
+    /// 文件系统中，且拥有足够的权限。若无法打开该文件夹，将抛出相关错误
     public static func new(
         eventLoop: EventLoop,
         storagePath: String,
         dbConfigure: SQLPostgresConfiguration,
         masterKey: Crypto.Symm.Key,
         logger: Logger,
+        fileExtension: String = DefaultCryptoFileExtension,
         filePermission: UnixPermission? = nil,
         debuging: Debuging? = nil
     ) async -> Res<FileStorage, Errcase> {
@@ -73,30 +97,20 @@ public final class FileStorage: @unchecked Sendable {
                 dbConfigure: dbConfigure,
                 masterKey: masterKey,
                 logger: logger,
+                fileExtension: fileExtension,
                 filePermission: filePermission,
                 debuging: debuging
             )
         }
     }
-    
-    /// 初始化 FileStorage 实例并执行数据库配置与目录权限设置。
-    ///
-    /// - Parameters:
-    ///   - eventLoop: 当前使用的事件循环。
-    ///   - storagePath: 文件存储路径。
-    ///   - dbConfigure: PostgreSQL 数据库配置。
-    ///   - masterKey: 主加密密钥。
-    ///   - logger: 日志输出器。
-    ///   - filePermission: 可选的 POSIX 权限设置。
-    ///   - debuging: 调试配置。
-    ///
-    /// - Throws: 如果初始化失败，将抛出相关错误。
+
     init(
         eventLoop: EventLoop,
         storagePath: String,
         dbConfigure: SQLPostgresConfiguration,
         masterKey: Crypto.Symm.Key,
         logger: Logger,
+        fileExtension: String,
         filePermission: UnixPermission?,
         debuging: Debuging? = nil
     ) async throws(BscError<Errcase>) {
@@ -130,6 +144,7 @@ public final class FileStorage: @unchecked Sendable {
         self.logger = logger
         self.dbs = Databases(threadPool: .singleton, on: eventLoop)
         self.filePermission = filePermission
+        self.fileExtension = fileExtension
         
         do {
             self.dbs.use(.postgres(configuration: dbConfigure), as: .psql)

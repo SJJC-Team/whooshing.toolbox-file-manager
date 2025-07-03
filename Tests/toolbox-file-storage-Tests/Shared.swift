@@ -59,7 +59,7 @@ struct TestingShared {
         let s = try await FileStorage.new(
             eventLoop: eventLoop,
             storagePath: testingStorageDir,
-            dbConfigure: .init(hostname: dbHost, port: dbPort, username: "postgres", password: "password", database: "postgres", tls: .disable),
+            dbConfigure: .init(hostname: dbHost, port: dbPort, username: "clwang", password: "password", database: "postgres", tls: .disable),
             masterKey: Key,
             logger: .init(label: "FileStorage-Testing"),
             filePermission: permission,
