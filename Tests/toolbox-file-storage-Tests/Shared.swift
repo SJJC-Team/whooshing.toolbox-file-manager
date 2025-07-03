@@ -53,7 +53,7 @@ struct TestingShared {
             let s = try await FileStorage.new(
                 eventLoop: eventLoop,
                 storagePath: testingStorageDir,
-                indexDatabaseConfigure: .init(hostname: "localhost", port: 5432, username: "postgres", password: "password", database: "postgres", tls: .disable),
+                indexDatabaseConfigure: .init(hostname: ProcessInfo.processInfo.environment["GITHUB_PG_TESTING_HOST"] ?? "localhost", port: 5432, username: "postgres", password: "password", database: "postgres", tls: .disable),
                 masterKey: Key,
                 logger: .init(label: "FileStorage-Testing"),
                 debuging: .init(tdeEncrypt: false)

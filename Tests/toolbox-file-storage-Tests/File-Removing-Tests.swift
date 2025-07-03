@@ -136,7 +136,9 @@ struct FileRemovingTests {
         )
     ]
     
-    @Test("文件创建", arguments: fileList.map { ($0.0, $0.2) })
+    static let fileCreate = fileList.map { ($0.0, $0.2) }
+    
+    @Test("文件创建", arguments: fileCreate)
     func createFileTest(path: StoragePath, chunkSize: Int64) async throws {
         let storage = try await TestingShared.getFileStorage()
         _ = try await storage.createFile(at: path, chunkSize: chunkSize).get()

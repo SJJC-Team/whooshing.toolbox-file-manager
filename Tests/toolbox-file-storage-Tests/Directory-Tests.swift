@@ -30,6 +30,8 @@ struct DirectoryTests {
         ("file4.webp", .webp)
     ]
     
+    static let hardDeletionList = dirList.enumerated().map { ($0, $1) }
+    
     @Test("创建测试文件夹")
     func createDirectoyrTest() async throws {
         let storage = try await TestingShared.getFileStorage()
@@ -171,7 +173,7 @@ struct DirectoryTests {
         }
     }
     
-    @Test("硬删除测试", arguments: dirList.enumerated().map { ($0, $1) })
+    @Test("硬删除测试", arguments: hardDeletionList)
     func hardDeletionTest(index: Int, path: StoragePath) async throws {
         let storage = try await TestingShared.getFileStorage()
         

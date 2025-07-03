@@ -38,7 +38,11 @@ struct FileAppendingTests {
         )
     ]
     
-    @Test("文件创建", arguments: fileList.map { ($0.0, $0.1) })
+    static let fileCreate = fileList.map { ($0.0, $0.1) }
+    static let fileWrite = fileList.map { ($0.0, $0.1, $0.2) }
+    static let fileAppend = fileList.map { ($0.0, $0.3) }
+    
+    @Test("文件创建", arguments: fileCreate)
     func createFileTest(path: StoragePath, chunkSize: Int64) async throws {
         let storage = try await TestingShared.getFileStorage()
         
@@ -66,7 +70,7 @@ struct FileAppendingTests {
         #expect(file.size == fileTest.size)
     }
     
-    @Test("文件写入测试", arguments: fileList.map { ($0.0, $0.1, $0.2) })
+    @Test("文件写入测试", arguments: fileWrite)
     func fileWriteTest(path: StoragePath, chunkSize: Int64, dataSize: Int64) async throws {
         let storage = try await TestingShared.getFileStorage()
         
@@ -161,7 +165,7 @@ struct FileAppendingTests {
         }
     }
     
-    @Test("文件追加测试", arguments: fileList.map { ($0.0, $0.3) })
+    @Test("文件追加测试", arguments: fileAppend)
     func fileAppendWriteTest(path: StoragePath, dataSize: Int64) async throws {
         let storage = try await TestingShared.getFileStorage()
         
