@@ -7,15 +7,15 @@ import Cryptos
 @Suite("ChunkHelper 文件数据块分割算法测试集")
 struct FilePartSeparateTests {
     
-    typealias FilePartParas = (
-        tagStart: Int,
-        byteStart: Int64,
-        byteEnd: Int64,
-        byteHeadIgnore: Int64,
-        byteTailIgnore: Int64,
-        encryptedStart: Int64,
-        encryptedEnd: Int64
-    )
+    struct FilePartParas {
+        let tagStart: Int
+        let byteStart: Int64
+        let byteEnd: Int64
+        let byteHeadIgnore: Int64
+        let byteTailIgnore: Int64
+        let encryptedStart: Int64
+        let encryptedEnd: Int64
+    }
     
     static let indexId = UUID()
     
@@ -31,7 +31,7 @@ struct FilePartSeparateTests {
         (
             chunkSize: 65535,
             lastTag: 0,
-            filePart: (
+            filePart: FilePartParas(
                 tagStart: 0,
                 byteStart: 0,
                 byteEnd: 100,
@@ -40,7 +40,7 @@ struct FilePartSeparateTests {
                 encryptedStart: 0,
                 encryptedEnd: 100 + Crypto.Symm.Stream.cipherExtraLength
             ),
-            indexRes: .init(
+            indexRes: ChunkHelpers.IntersectionResult(
                 rangeOffset: 0,
                 rangeInIntersection: true,
                 chunkIndex: 0,
@@ -52,7 +52,7 @@ struct FilePartSeparateTests {
         (
             chunkSize: 10,
             lastTag: 0,
-            filePart: (
+            filePart: FilePartParas(
                 tagStart: 0,
                 byteStart: 0,
                 byteEnd: 10000,
@@ -61,7 +61,7 @@ struct FilePartSeparateTests {
                 encryptedStart: 0,
                 encryptedEnd: 10000 + (10000 / 10 * Crypto.Symm.Stream.cipherExtraLength)
             ),
-            indexRes: .init(
+            indexRes: ChunkHelpers.IntersectionResult(
                 rangeOffset: 2,
                 rangeInIntersection: false,
                 chunkIndex: 20,
@@ -69,7 +69,7 @@ struct FilePartSeparateTests {
                 chunks: [10 + Crypto.Symm.Stream.cipherExtraLength]
             ),
             expect: .success((
-                (
+                FilePartParas(
                     tagStart: 0,
                     byteStart: 0,
                     byteEnd: 20 * 10 + 2,
@@ -77,7 +77,7 @@ struct FilePartSeparateTests {
                     byteTailIgnore: 8,
                     encryptedStart: 0,
                     encryptedEnd: 21 * 10 + (21 * Crypto.Symm.Stream.cipherExtraLength)
-                ),(
+                ), FilePartParas(
                     tagStart: 20,
                     byteStart: 20 * 10 + 2,
                     byteEnd: 10000,
@@ -91,7 +91,7 @@ struct FilePartSeparateTests {
         (
             chunkSize: 10,
             lastTag: 100000,
-            filePart: (
+            filePart: FilePartParas(
                 tagStart: 100,
                 byteStart: 1006,
                 byteEnd: 9996,
@@ -100,7 +100,7 @@ struct FilePartSeparateTests {
                 encryptedStart: 1000 + (1000 / 10 * Crypto.Symm.Stream.cipherExtraLength),
                 encryptedEnd: 10000 + (10000 / 10 * Crypto.Symm.Stream.cipherExtraLength)
             ),
-            indexRes: .init(
+            indexRes: ChunkHelpers.IntersectionResult(
                 rangeOffset: 6,
                 rangeInIntersection: false,
                 chunkIndex: 30,
@@ -108,7 +108,7 @@ struct FilePartSeparateTests {
                 chunks: [10 + Crypto.Symm.Stream.cipherExtraLength]
             ),
             expect: .success((
-                (
+                FilePartParas(
                     tagStart: 100,
                     byteStart: 1006,
                     byteEnd: 1006 + 30 * 10,
@@ -116,7 +116,7 @@ struct FilePartSeparateTests {
                     byteTailIgnore: 4,
                     encryptedStart: 1000 + (1000 / 10 * Crypto.Symm.Stream.cipherExtraLength),
                     encryptedEnd: 1310 + (1310 / 10 * Crypto.Symm.Stream.cipherExtraLength)
-                ),(
+                ), FilePartParas(
                     tagStart: 130,
                     byteStart: 1006 + 30 * 10,
                     byteEnd: 9996,
