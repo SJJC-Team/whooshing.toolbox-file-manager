@@ -145,7 +145,7 @@ struct DirectoryTests {
                 if let file = entry as? File {
                     let fileInfo = try #require(
                         Self.fileList.enumerated().first { element in
-                            try element.element.0 == file.path.remove(Self.testDir, from: .head)
+                            element.element.0 == file.path.remove(Self.testDir, from: .head)
                         }
                     )
                     #expect(file.mimeType == fileInfo.element.1)
@@ -154,8 +154,8 @@ struct DirectoryTests {
                     last = false
                     
                     #expect(
-                        try Self.dirList.first {
-                            try $0.__contains(dir.path.remove(Self.testDir, from: .head))
+                        Self.dirList.first {
+                            $0.__contains(dir.path.remove(Self.testDir, from: .head))
                         } != nil
                     )
                     try await travel(dir: dir)
@@ -165,7 +165,7 @@ struct DirectoryTests {
             if last {
                 let dirInfo = try #require(
                     Self.dirList.enumerated().first { element in
-                        try element.element == dir.path.remove(Self.testDir, from: .head)
+                        element.element == dir.path.remove(Self.testDir, from: .head)
                     }
                 )
                 dirCheck[dirInfo.offset] = true
