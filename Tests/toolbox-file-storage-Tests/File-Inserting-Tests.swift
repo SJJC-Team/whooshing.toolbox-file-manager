@@ -71,14 +71,14 @@ struct FileInsertionTests {
     @Test("文件创建", arguments: fileCreate)
     func createFileTest(path: StoragePath, chunkSize: Int64) async throws {
         let storage = try await TestingShared.getFileStorage()
-        _ = try await storage.createFile(at: path, chunkSize: chunkSize).get()
+        _ = try await storage.createFile(at: path, chunkSize: chunkSize)
     }
     
     @Test("文件数据插入测试", arguments: fileList)
     func fileDataInsertionTest(path: StoragePath, testingData: TestingData, chunkSize: Int64, insertions: [Insertion]) async throws {
         let storage = try await TestingShared.getFileStorage()
         
-        let file = try await storage.getFile(at: path).get()
+        let file = try await storage.getFile(at: path)
         
         let data: ByteBuffer
         
@@ -90,8 +90,8 @@ struct FileInsertionTests {
         let dataSize = Int64(data.readableBytes)
         
         try await file.withWriter { writer in
-            writer.insert(at: .begin(), bytes: data)
-        }.get()
+            try await writer.insert(at: .begin(), bytes: data)
+        }
         
         let fileCrypto = try #require(
             try await FileCrypto.query(on: storage.db)
@@ -116,10 +116,9 @@ struct FileInsertionTests {
             }
             
             let fileData = try await file.withReadWriter { readWriter in
-                readWriter.write(at: insertion.index, bytes: insertData, method: .insert).flatMap {
-                    readWriter.readData(part: .all)
-                }
-            }.get()
+                try await readWriter.write(at: insertion.index, bytes: insertData, method: .insert)
+                return try await readWriter.readData(part: .all)
+            }
             
             let index: Int
             
@@ -162,7 +161,7 @@ struct FileInsertionTests {
     func emptyAllTest() async throws {
         let storage = try await TestingShared.getFileStorage()
         
-        try await storage.rootDir.empty(force: true).get()
+        try await storage.rootDir.empty(force: true)
     }
     
     @Test("数据库和文件系统中的数据应当为空")

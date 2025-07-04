@@ -3,11 +3,15 @@ import AsyncAlgorithms
 import Cryptos
 import NIOConcurrencyHelpers
 import ErrorHandle
+import NIOCore
 
 /// 文件内容操作处理协议，表示文件操作时需要实现的基础行为。
 ///
 /// 该协议继承自 `Sendable`，支持异步关闭文件资源。
 public protocol FileContentHandler: Sendable {
+    /// 该文件句柄所运行在其上的 EventLoop
+    var eventLoop: any EventLoop { get }
+    
     /// 异步关闭文件资源。
     ///
     /// - Throws: 关闭操作失败时抛出带有文件错误类型的错误。
@@ -31,6 +35,10 @@ extension __FileContentHandler {
         lock.withLock {
             __fileHandler
         }
+    }
+    
+    var eventLoop: any EventLoop {
+        self.storage.eventLoop
     }
     
     func close() async throws(BscError<File.Errcase>) {

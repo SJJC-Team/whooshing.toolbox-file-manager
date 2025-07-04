@@ -53,7 +53,7 @@ struct FileAppendingTests {
     func createFileTest(path: StoragePath, chunkSize: Int64) async throws {
         let storage = try await TestingShared.getFileStorage()
         
-        let file = try await storage.createFile(at: path, chunkSize: chunkSize, withIntermediateDirectories: true).get()
+        let file = try await storage.createFile(at: path, chunkSize: chunkSize, withIntermediateDirectories: true)
         
         #expect(file.name == path.last!)
         #expect(file.mimeType == .plain)
@@ -68,7 +68,7 @@ struct FileAppendingTests {
         
         #expect(fileCrypto.chunkSize == chunkSize)
         
-        let fileTest = try await storage.getFile(at: path).get()
+        let fileTest = try await storage.getFile(at: path)
         
         #expect(file.id == fileTest.id)
         #expect(file.name == fileTest.name)
@@ -81,15 +81,15 @@ struct FileAppendingTests {
     func fileWriteTest(path: StoragePath, chunkSize: Int64, dataSize: Int64) async throws {
         let storage = try await TestingShared.getFileStorage()
         
-        let file = try await storage.getFile(at: path).get()
+        let file = try await storage.getFile(at: path)
         
         let testData = randomData(size: Int(dataSize))
         
         try await file.withWriter { writer in
-            writer.write(at: .begin(), bytes: testData, method: .insert)
-        }.get()
+            try await writer.write(at: .begin(), bytes: testData, method: .insert)
+        }
         
-        let fileTest = try await storage.getFile(at: path).get()
+        let fileTest = try await storage.getFile(at: path)
         
         #expect(fileTest.size == file.size)
         #expect(fileTest.size == dataSize)
@@ -105,16 +105,16 @@ struct FileAppendingTests {
         #expect(fileCrypto.encryptedSize == dataSize + Int64(fileCrypto.lastTag) * (Crypto.Symm.Stream.cipherExtraLength))
         
         let data = try await file.withReader { reader in
-            reader.readData(part: .range(0..<dataSize))
-        }.get()
+            try await reader.readData(part: .range(0..<dataSize))
+        }
         
         #expect(data == testData)
         
         let readRange = (dataSize / 2)..<(dataSize * 2 / 3)
         
         let data2 = try await file.withReader { reader in
-            reader.readData(part: .range(readRange))
-        }.get()
+            try await reader.readData(part: .range(readRange))
+        }
         
         #expect(data2 == testData.getSlice(at: Int(readRange.lowerBound), length: Int(readRange.upperBound - readRange.lowerBound)))
         
@@ -129,9 +129,9 @@ struct FileAppendingTests {
     func directorySizeTest() async throws {
         let storage = try await TestingShared.getFileStorage()
         
-        let dir = try await storage.getDirectory(at: Self.testDir).get()
+        let dir = try await storage.getDirectory(at: Self.testDir)
         
-        let size = try await dir.getSize().get()
+        let size = try await dir.getSize()
         
         #expect(Self.fileList.reduce(0) { $0 + $1.2 } == size)
     }
@@ -152,23 +152,23 @@ struct FileAppendingTests {
         
         let file: File
         if makeNew {
-            file = try await storage.createFile(at: path, chunkSize: chunkSize).get()
+            file = try await storage.createFile(at: path, chunkSize: chunkSize)
         } else {
-            file = try await storage.getFile(at: path).get()
+            file = try await storage.getFile(at: path)
         }
         
         #expect(file.mimeType == .gzip)
         
         await #expect(throws: BscError<File.Errcase>.self) {
             try await file.withWriter { writer in
-                writer.write(at: .begin(of: -1), bytes: randomData(size: 1000), method: .insert)
-            }.get()
+                try await writer.write(at: .begin(of: -1), bytes: randomData(size: 1000), method: .insert)
+            }
         }
         
         await #expect(throws: BscError<File.Errcase>.self) {
             try await file.withWriter { writer in
-                writer.write(at: .end(of: -1), bytes: randomData(size: 1000), method: .insert)
-            }.get()
+                try await writer.write(at: .end(of: -1), bytes: randomData(size: 1000), method: .insert)
+            }
         }
     }
     
@@ -176,7 +176,7 @@ struct FileAppendingTests {
     func fileAppendWriteTest(path: StoragePath, dataSize: Int64) async throws {
         let storage = try await TestingShared.getFileStorage()
         
-        let file = try await storage.getFile(at: path).get()
+        let file = try await storage.getFile(at: path)
         
         let fileOriginSize = file.size
         
@@ -193,10 +193,10 @@ struct FileAppendingTests {
         let byteOriginSize = originSize - (Crypto.Symm.Stream.cipherExtraLength * Int64(lastTag))
         
         try await file.withWriter { writer in
-            writer.insert(at: .end(), bytes: testData)
-        }.get()
+            try await writer.insert(at: .end(), bytes: testData)
+        }
         
-        let fileTest = try await storage.getFile(at: path).get()
+        let fileTest = try await storage.getFile(at: path)
         
         #expect(file.size == fileOriginSize + dataSize)
         #expect(fileTest.size == file.size)
@@ -230,9 +230,9 @@ struct FileAppendingTests {
     func directorySizeTest2() async throws {
         let storage = try await TestingShared.getFileStorage()
         
-        let dir = try await storage.getDirectory(at: Self.testDir).get()
+        let dir = try await storage.getDirectory(at: Self.testDir)
         
-        let size = try await dir.getSize().get()
+        let size = try await dir.getSize()
         
         #expect(Self.fileList.reduce(0) { $0 + $1.2 + $1.3 } == size)
     }
@@ -241,7 +241,7 @@ struct FileAppendingTests {
     func emptyAllTest() async throws {
         let storage = try await TestingShared.getFileStorage()
         
-        try await storage.rootDir.empty(force: true).get()
+        try await storage.rootDir.empty(force: true)
     }
     
     @Test("数据库和文件系统中的数据应当为空")

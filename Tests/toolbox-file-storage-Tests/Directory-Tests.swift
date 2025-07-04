@@ -36,12 +36,12 @@ struct DirectoryTests {
     func createDirectoyrTest() async throws {
         let storage = try await TestingShared.getFileStorage()
         
-        let dir = try await storage.createDirectory(at: Self.originDir, withIntermediateDirectories: true).get()
+        let dir = try await storage.createDirectory(at: Self.originDir, withIntermediateDirectories: true)
         
         #expect(dir.name == Self.originDir.last!)
         #expect(dir.path == Self.originDir)
         
-        let dirTest = try await storage.getDirectory(at: Self.originDir).get()
+        let dirTest = try await storage.getDirectory(at: Self.originDir)
         
         #expect(dir.id == dirTest.id)
         #expect(dir.name == dirTest.name)
@@ -52,11 +52,11 @@ struct DirectoryTests {
     func moveTest() async throws {
         let storage = try await TestingShared.getFileStorage()
         
-        let dir = try await storage.createDirectory(at: .init(stringLiteral: Self.testDir.last!), withIntermediateDirectories: true).get()
+        let dir = try await storage.createDirectory(at: .init(stringLiteral: Self.testDir.last!), withIntermediateDirectories: true)
         
-        let destination = try await storage.getDirectory(at: Self.originDir).get()
+        let destination = try await storage.getDirectory(at: Self.originDir)
         
-        let newDir = try await dir.move(to: destination).get()
+        let newDir = try await dir.move(to: destination)
         
         #expect(newDir.id == dir.id)
         #expect(newDir.name == Self.testDir.last!)
@@ -67,18 +67,18 @@ struct DirectoryTests {
     func renameTest() async throws {
         let storage = try await TestingShared.getFileStorage()
         
-        let dir = try await storage.getDirectory(at: .init(stringLiteral: Self.originDir.first!)).get()
+        let dir = try await storage.getDirectory(at: .init(stringLiteral: Self.originDir.first!))
         
-        let newDir = try await dir.rename(as: Self.testDir.first!).get()
+        let newDir = try await dir.rename(as: Self.testDir.first!)
         
-        let dirTest = try await storage.getDirectory(at: .init(stringLiteral: Self.testDir.first!)).get()
+        let dirTest = try await storage.getDirectory(at: .init(stringLiteral: Self.testDir.first!))
         
         #expect(newDir.id == dirTest.id)
         #expect(newDir.name == dirTest.name)
         #expect(newDir.path == dirTest.path)
         
         await #expect(throws: BscError<FileStorage.Errcase>.self) {
-            try await storage.getDirectory(at: Self.originDir).get()
+            try await storage.getDirectory(at: Self.originDir)
         }
     }
     
@@ -88,12 +88,12 @@ struct DirectoryTests {
         
         let testPath = Self.testDir + path
         
-        let dir = try await storage.createDirectory(at: testPath, withIntermediateDirectories: true).get()
+        let dir = try await storage.createDirectory(at: testPath, withIntermediateDirectories: true)
         
         #expect(dir.name == testPath.last!)
         #expect(dir.path == testPath)
         
-        let dirTest = try await storage.getDirectory(at: testPath).get()
+        let dirTest = try await storage.getDirectory(at: testPath)
         
         #expect(dir.id == dirTest.id)
         #expect(dir.name == dirTest.name)
@@ -106,14 +106,14 @@ struct DirectoryTests {
         
         let testPath = Self.testDir + path
         
-        let file = try await storage.createFile(at: testPath).get()
+        let file = try await storage.createFile(at: testPath)
         
         #expect(file.name == testPath.last!)
         #expect(file.mimeType == mimeType)
         #expect(file.path == testPath)
         #expect(file.size == 0)
         
-        let fileTest = try await storage.getFile(at: testPath).get()
+        let fileTest = try await storage.getFile(at: testPath)
         
         #expect(file.id == fileTest.id)
         #expect(file.name == fileTest.name)
@@ -126,7 +126,7 @@ struct DirectoryTests {
     func subItemsTest() async throws {
         let storage = try await TestingShared.getFileStorage()
         
-        let dir = try await storage.getDirectory(at: Self.testDir).get()
+        let dir = try await storage.getDirectory(at: Self.testDir)
         
         var fileCheck: [Bool] = .init(repeating: false, count: Self.fileList.count)
         var dirCheck: [Bool] = .init(repeating: false, count: Self.dirList.count)
@@ -137,7 +137,7 @@ struct DirectoryTests {
         #expect(dirCheck.allSatisfy { $0 == true } )
         
         func travel(dir: Directory) async throws {
-            let entries = try await dir.subitems().get()
+            let entries = try await dir.subitems()
             
             var last = true
             
@@ -177,9 +177,9 @@ struct DirectoryTests {
     func hardDeletionTest(index: Int, path: StoragePath) async throws {
         let storage = try await TestingShared.getFileStorage()
         
-        let dir = try await storage.getDirectory(at: Self.testDir + path.first!).get()
+        let dir = try await storage.getDirectory(at: Self.testDir + path.first!)
         
-        try await dir.empty(force: true).get()
+        try await dir.empty(force: true)
         
         let storageDir = try await FileSystem.shared.openDirectory(atPath: .init(storage.storagePath))
         
@@ -212,15 +212,15 @@ struct DirectoryTests {
     func directoryEmptyTest() async throws {
         let storage = try await TestingShared.getFileStorage()
         
-        let dir = try await storage.getDirectory(at: .init(stringLiteral: Self.testDir.first!)).get()
+        let dir = try await storage.getDirectory(at: .init(stringLiteral: Self.testDir.first!))
         
-        try await dir.empty(force: true).get()
+        try await dir.empty(force: true)
         
         for i in (2...Self.testDir.count).reversed() {
             let p = StoragePath(components: .init(Self.testDir.components[0..<i]))
             
             await #expect(throws: BscError<FileStorage.Errcase>.self) {
-                try await storage.getDirectory(at: p).get()
+                try await storage.getDirectory(at: p)
             }
         }
     }
@@ -229,10 +229,10 @@ struct DirectoryTests {
     func emptyAllTest() async throws {
         let storage = try await TestingShared.getFileStorage()
         
-        try await storage.rootDir.empty(force: true).get()
+        try await storage.rootDir.empty(force: true)
         
         await #expect(throws: BscError<FileStorage.Errcase>.self) {
-            try await storage.getDirectory(at: .init(stringLiteral: Self.testDir.first!)).get()
+            try await storage.getDirectory(at: .init(stringLiteral: Self.testDir.first!))
         }
     }
     

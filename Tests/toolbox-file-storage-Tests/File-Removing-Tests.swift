@@ -148,14 +148,14 @@ struct FileRemovingTests {
     @Test("文件创建", arguments: fileCreate)
     func createFileTest(path: StoragePath, chunkSize: Int64) async throws {
         let storage = try await TestingShared.getFileStorage()
-        _ = try await storage.createFile(at: path, chunkSize: chunkSize).get()
+        _ = try await storage.createFile(at: path, chunkSize: chunkSize)
     }
     
     @Test("文件数据抹除测试", arguments: fileList)
     func fileDataRemoveTest(path: StoragePath, testingData: TestingData, chunkSize: Int64, removings: [Range<Int64>]) async throws {
         let storage = try await TestingShared.getFileStorage()
         
-        let file = try await storage.getFile(at: path).get()
+        let file = try await storage.getFile(at: path)
         
         let data: ByteBuffer
         
@@ -167,8 +167,8 @@ struct FileRemovingTests {
         let dataSize = Int64(data.readableBytes)
         
         try await file.withWriter { writer in
-            writer.insert(at: .begin(), bytes: data)
-        }.get()
+            try await writer.insert(at: .begin(), bytes: data)
+        }
         
         let fileCrypto = try #require(
             try await FileCrypto.query(on: storage.db)
@@ -186,10 +186,9 @@ struct FileRemovingTests {
             print(dataTest.readableBytes)
             
             let fileData = try await file.withReadWriter { readWriter in
-                readWriter.remove(in: removing).flatMap {
-                    readWriter.readData(part: .all)
-                }
-            }.get()
+                try await readWriter.remove(in: removing)
+                return try await readWriter.readData(part: .all)
+            }
             
             var right = dataTest.getSlice(at: Int(removing.upperBound), length: dataTest.readableBytes - Int(removing.upperBound)) ?? ByteBuffer()
             dataTest = dataTest.getSlice(at: 0, length: Int(removing.lowerBound)) ?? ByteBuffer()
@@ -220,7 +219,7 @@ struct FileRemovingTests {
     func emptyAllTest() async throws {
         let storage = try await TestingShared.getFileStorage()
         
-        try await storage.rootDir.empty(force: true).get()
+        try await storage.rootDir.empty(force: true)
     }
     
     @Test("数据库和文件系统中的数据应当为空")

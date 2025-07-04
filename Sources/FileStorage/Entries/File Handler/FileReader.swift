@@ -35,12 +35,18 @@ public protocol FileReader: FileContentHandler {
     ///
     /// - Parameter part: 指定读取的文件范围。
     /// - Returns: 异步抛出错误的字节缓冲区通道。
+    ///
+    /// 该写入操作带有 BackPressure 功能，会自动阻塞文件系统的数据流，防止内存堆砌
     func read(part: ReadPart) -> AsyncThrowingChannel<ByteBuffer, Error>
     
     /// 读取指定范围的文件内容，返回完整的字节缓冲区。
     ///
     /// - Parameter part: 指定读取的文件范围。
     /// - Returns: 异步事件循环结果，成功时返回读取的数据，失败时返回错误。
+    ///
+    /// - Warning: 使用这个方法会将文件中要读取的数据全部堆砌至内存中，直到读取完毕后
+    /// 才会作为返回值返回，这对于小数据读取是极佳的。但应当避免大文件数据读取，否则容易
+    /// 造成内存堆砌
     func readData(part: ReadPart) -> EventLoopRes<ByteBuffer, File.Errcase>
     
     /// 读取指定范围的文件内容，分块回调处理每个字节缓冲区。
@@ -49,6 +55,15 @@ public protocol FileReader: FileContentHandler {
     ///   - part: 指定读取的文件范围。
     ///   - callback: 异步回调，每次读取到的数据块。
     ///   
+    /// - Returns: 异步事件循环结果，成功或失败。
+    func readChunks(part: ReadPart, _ callback: @escaping @Sendable (ByteBuffer) -> EventLoopResult<Void, Error>) -> EventLoopRes<Void, File.Errcase>
+    
+    /// 读取指定范围的文件内容，分块回调处理每个字节缓冲区。
+    ///
+    /// - Parameters:
+    ///   - part: 指定读取的文件范围。
+    ///   - callback: 异步回调，每次读取到的数据块。
+    ///
     /// - Returns: 异步事件循环结果，成功或失败。
     func readChunks(part: ReadPart, _ callback: @escaping @Sendable (ByteBuffer) async throws -> ()) -> EventLoopRes<Void, File.Errcase>
 }
@@ -92,7 +107,23 @@ extension __FileReader {
         }.withError(File.Errcase.readFileFailed)
     }
     
-    func readChunks(part: ReadPart, _ callback: @escaping @Sendable (ByteBuffer) async throws -> ()) -> EventLoopRes<Void, File.Errcase> {
+    func readChunks(
+        part: ReadPart,
+        _ callback: @escaping @Sendable (ByteBuffer) -> EventLoopResult<Void, Error>
+    ) -> EventLoopRes<Void, File.Errcase> {
+        let channel = read(part: part)
+        
+        return storage.db.eventLoop.makeFutureWithTask {
+            for try await chunk in channel {
+                try await callback(chunk).get()
+            }
+        }.withError(File.Errcase.readFileFailed)
+    }
+    
+    func readChunks(
+        part: ReadPart,
+        _ callback: @escaping @Sendable (ByteBuffer) async throws -> ()
+    ) -> EventLoopRes<Void, File.Errcase> {
         let channel = read(part: part)
         
         return storage.db.eventLoop.makeFutureWithTask {

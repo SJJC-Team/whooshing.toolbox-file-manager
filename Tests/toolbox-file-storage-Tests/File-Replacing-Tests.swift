@@ -74,14 +74,14 @@ struct FileReplacmentTests {
     @Test("文件创建", arguments: fileCreate)
     func createFileTest(path: StoragePath, chunkSize: Int64) async throws {
         let storage = try await TestingShared.getFileStorage()
-        _ = try await storage.createFile(at: path, chunkSize: chunkSize).get()
+        _ = try await storage.createFile(at: path, chunkSize: chunkSize)
     }
     
     @Test("文件数据覆写测试", arguments: fileList)
     func fileDataReplacementTest(path: StoragePath, testingData: TestingData, chunkSize: Int64, replacings: [Replacing]) async throws {
         let storage = try await TestingShared.getFileStorage()
         
-        let file = try await storage.getFile(at: path).get()
+        let file = try await storage.getFile(at: path)
         
         let data: ByteBuffer
         
@@ -93,8 +93,8 @@ struct FileReplacmentTests {
         let dataSize = Int64(data.readableBytes)
         
         try await file.withWriter { writer in
-            writer.insert(at: .begin(), bytes: data)
-        }.get()
+            try await writer.insert(at: .begin(), bytes: data)
+        }
         
         let fileCrypto = try #require(
             try await FileCrypto.query(on: storage.db)
@@ -119,10 +119,9 @@ struct FileReplacmentTests {
             }
             
             let fileData = try await file.withReadWriter { readWriter in
-                readWriter.write(at: .begin(of: replacing.start), bytes: replacingData, method: .replace).flatMap {
-                    readWriter.readData(part: .all)
-                }
-            }.get()
+                try await readWriter.write(at: .begin(of: replacing.start), bytes: replacingData, method: .replace)
+                return try await readWriter.readData(part: .all)
+            }
             
             let replaceEndIndex = Int(replacing.start) + replacingData.readableBytes
             
@@ -157,7 +156,7 @@ struct FileReplacmentTests {
     func emptyAllTest() async throws {
         let storage = try await TestingShared.getFileStorage()
         
-        try await storage.rootDir.empty(force: true).get()
+        try await storage.rootDir.empty(force: true)
     }
     
     @Test("数据库和文件系统中的数据应当为空")

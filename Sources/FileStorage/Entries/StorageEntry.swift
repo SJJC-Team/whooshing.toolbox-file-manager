@@ -60,7 +60,7 @@ public extension StorageEntry {
     ///   - path: 目标目录路径。
     ///   - name: 可选的新名称。
     /// - Returns: 异步事件循环结果。
-    func move(to path: StoragePath, as name: String?) -> EventLoopRes<Self, FileStorage.Errcase> {
+    func move(to path: StoragePath, as name: String? = nil) -> EventLoopRes<Self, FileStorage.Errcase> {
         storage.getDirectory(at: path).flatMap { dir in
             move(to: dir, as: name)
         }
