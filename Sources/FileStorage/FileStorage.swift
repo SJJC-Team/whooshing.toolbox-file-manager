@@ -72,7 +72,7 @@ import NIOAdvanced
 /// // 在指定的路径下创建目录
 /// // 你可以指定 withIntermediateDirectories: 参数为 true 以自动创建中间目录
 /// // 否则，若中间目录不存在，将会抛出错误
-/// let dir = try await storage.createDirectory(at: path).get()
+/// let dir = try await storage.createDirectory(at: path)
 ///
 /// print(dir.name)                 // <-- print: example
 /// print(dir.path)                 // <-- print: testing/example
@@ -88,7 +88,7 @@ import NIOAdvanced
 /// // 在指定的路径下创建文件
 /// // 你可以指定 withIntermediateDirectories: 参数为 true 以自动创建中间目录
 /// // 否则，若中间目录不存在，将会抛出错误
-/// let file = try await storage.createFile(at: path).get()
+/// let file = try await storage.createFile(at: path)
 ///
 /// print(file.name)                // <-- print: example.txt
 /// print(file.mimeType)            // <-- print: MimeType.plain "text/plain"
@@ -103,7 +103,7 @@ import NIOAdvanced
 /// let path: StoragePath = "testing/example"
 ///
 /// // 获取目录
-/// let dir = try await storage.getDirectory(at: path).get()
+/// let dir = try await storage.getDirectory(at: path)
 ///
 /// print(dir.name)                 // <-- print: example
 /// print(dir.path)                 // <-- print: testing/example
@@ -116,7 +116,7 @@ import NIOAdvanced
 /// let path: StoragePath = "testing/example.txt"
 ///
 /// // 获取文件
-/// let file = try await storage.getFile(at: path).get()
+/// let file = try await storage.getFile(at: path)
 ///
 /// print(file.name)                // <-- print: example.txt
 /// print(file.mimeType)            // <-- print: MimeType.plain "text/plain"

@@ -29,7 +29,7 @@ public typealias FileReadWriter = FileReader & FileWriter
 /// // 在指定的路径下创建文件
 /// // 你可以指定 withIntermediateDirectories: 参数为 true 以自动创建中间目录
 /// // 否则，若中间目录不存在，将会抛出错误
-/// let file = try await storage.createFile(at: path).get()
+/// let file = try await storage.createFile(at: path)
 ///
 /// print(file.name)                // <-- print: example.txt
 /// print(file.mimeType)            // <-- print: MimeType.plain "text/plain"
@@ -40,7 +40,7 @@ public typealias FileReadWriter = FileReader & FileWriter
 ///
 /// 得到文件实例后，你可以对其重新命名:
 /// ``` swift
-/// let renamedFile = try await file.rename(as: "image.png").get()
+/// let renamedFile = try await file.rename(as: "image.png")
 ///
 /// print(renamedFile.name)         // <-- print: image.png
 /// print(renamedFile.mimeType)     // <-- print: MimeType.png "image/png"
@@ -54,7 +54,7 @@ public typealias FileReadWriter = FileReader & FileWriter
 /// let destination: Directory = ...
 ///
 /// // 将文件移动到目标目录下
-/// let movedFile = renamedFile.move(to: destination).get()
+/// let movedFile = renamedFile.move(to: destination)
 ///
 /// print(movedFile.path)           // <-- print: <目标目录的路径>/image.png
 /// ```
@@ -62,17 +62,17 @@ public typealias FileReadWriter = FileReader & FileWriter
 /// 删除文件:
 /// ``` swift
 /// // 软删除文件，默认，极其轻量化操作，不会真正删除文件，仅标记为已删除
-/// try await movedFile.delete().get()
+/// try await movedFile.delete()
 /// // 或者，硬删除(破坏性操作)，这将直接从数据库及文件系统中彻底删除该文件数据，且无法撤销
-/// try await movedFile.delete(force: true).get()
+/// try await movedFile.delete(force: true)
 /// ```
 ///
 /// #### 文件读写
 ///
 /// 要对文件进行读写，首先需要打开该文件，以此读取或写入其中的数据，本类型提供:
-///     - 打开文件仅用于读取
-///     - 打开文件仅用于写
-///     - 打开文件可用于读写
+/// * 打开文件仅用于读取
+/// * 打开文件仅用于写
+/// * 打开文件可用于读写
 ///
 /// 打开文件用于只读:
 /// ``` swift
@@ -120,7 +120,7 @@ public typealias FileReadWriter = FileReader & FileWriter
 ///
 /// 打开一个文件或获取其读句柄
 /// ``` swift
-/// let reader = try await file.openForRead().get()
+/// let reader = try await file.openForRead()
 ///
 /// // 进行一些操作
 ///
@@ -130,7 +130,7 @@ public typealias FileReadWriter = FileReader & FileWriter
 ///
 /// 或只写:
 /// ``` swift
-/// let writer = try await file.openForWrite().get()
+/// let writer = try await file.openForWrite()
 ///
 /// // ...
 ///
@@ -139,7 +139,7 @@ public typealias FileReadWriter = FileReader & FileWriter
 ///
 /// 或读写:
 /// ``` swift
-/// let readWriter = try await file.openForReadWrite().get()
+/// let readWriter = try await file.openForReadWrite()
 ///
 /// // ...
 ///
@@ -150,9 +150,9 @@ public typealias FileReadWriter = FileReader & FileWriter
 /// 自己在每次完成动作后手动调用 `.close()` 函数，包括出错的时候。因此，你可能需要
 /// 像以下如此处理读写，确保每次句柄都能正常关闭。
 /// ``` swift
-/// let readWriter = try await file.openForReadAndWrite().get()
+/// let readWriter = try await file.openForReadAndWrite()
 /// do {
-///     let res = try await action(readWriter).get()
+///     let res = try await action(readWriter)
 ///
 ///     // 进行你的读写操作
 ///

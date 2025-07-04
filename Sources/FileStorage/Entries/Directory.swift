@@ -26,7 +26,7 @@ import NIOFileSystem
 /// // 在指定的路径下创建目录
 /// // 你可以指定 withIntermediateDirectories: 参数为 true 以自动创建中间目录
 /// // 否则，若中间目录不存在，将会抛出错误
-/// let dir = try await storage.createDirectory(at: path).get()
+/// let dir = try await storage.createDirectory(at: path)
 ///
 /// print(dir.name)                 // <-- print: example
 /// print(dir.path)                 // <-- print: testing/example
@@ -35,7 +35,7 @@ import NIOFileSystem
 ///
 /// 得到目录实例后，你可以对其重新命名:
 /// ``` swift
-/// let renamedDir = try await dir.rename(as: "images").get()
+/// let renamedDir = try await dir.rename(as: "images")
 ///
 /// print(renamedDir.name)          // <-- print: images
 /// print(renamedDir.path)          // <-- print: testing/images
@@ -47,14 +47,14 @@ import NIOFileSystem
 /// let destination: Directory = ...
 ///
 /// // 将目录移动到目标目录下
-/// let movedDir = renamedDir.move(to: destination).get()
+/// let movedDir = renamedDir.move(to: destination)
 ///
 /// print(movedDir.path)            // <-- print: <目标目录的路径>/images
 /// ```
 ///
 /// 你可以获取该目录的所有第一层子项目:
 /// ``` swift
-/// let items = try await movedDir.subItems().get()
+/// let items = try await movedDir.subItems()
 /// for item in items {
 ///     if let file = item as? File {
 ///         // 打印出该子文件的信息
@@ -74,7 +74,7 @@ import NIOFileSystem
 ///
 /// 获取目录大小:
 /// ``` swift
-/// let size = try await movedDir.getSize().get()
+/// let size = try await movedDir.getSize()
 ///
 /// print(size)
 /// ```
@@ -82,18 +82,18 @@ import NIOFileSystem
 /// 清空目录:
 /// ``` swift
 /// // 软清空目录，默认，极其轻量化操作，不会真正删除文件，仅标记为已删除
-/// try await movedDir.empty().get()
+/// try await movedDir.empty()
 /// // 或者，硬清空(破坏性操作)，这将直接从数据库及文件系统中彻底删除所有的子项目，且无法撤销
-/// try await movedDir.delete(force: true).get()
+/// try await movedDir.delete(force: true)
 /// ```
 ///
 /// 删除目录:
 /// ``` swift
 /// // 软删除目录，默认，极其轻量化操作，不会真正删除文件，仅标记为已删除
-/// try await movedDir.delete().get()
+/// try await movedDir.delete()
 /// // 或者，硬删除(破坏性操作)，这将直接从数据库及文件系统中彻底删除该目录数据，且无法撤销
 /// // 需要注意的是，删除一个文件夹也会删除其所有的子项目，因此请谨慎操作
-/// try await movedDir.delete(force: true).get()
+/// try await movedDir.delete(force: true)
 /// ```
 public struct Directory: StorageEntry, Sendable {
     
