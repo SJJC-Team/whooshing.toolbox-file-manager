@@ -42,7 +42,7 @@
 在你的 Package.swift 加入：
 
 ``` swift
-.package(url: "https://github.com/SJJC-Team/whooshing.toolbox-file-storage", .upToNextMajor(from: "1.0.0"))
+.package(url: "https://github.com/SJJC-Team/whooshing.toolbox-file-storage", .upToNextMajor(from: "1.0.1"))
 ```
 
 在依赖模块中引入:
@@ -394,7 +394,7 @@ try await readWriter.close()
 
 ### 运行环境
 
-* **macOS** (> 13.0)
+* **macOS** (> 11.0)
 * **iOS** (> 14.0)
 * **Linux** (> 20)
 * **Swift** (> 6.0)

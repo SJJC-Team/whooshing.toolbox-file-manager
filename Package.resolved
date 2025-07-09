@@ -1,5 +1,5 @@
 {
-  "originHash" : "1af0f7057077a1aea955450298d906a6e3c4ec3afcf6dbe1b4fd5ae2090870eb",
+  "originHash" : "af4ae3612f5f678f406e12125eca373565686171db535de2938bf817d131af1d",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -132,8 +132,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-certificates.git",
       "state" : {
-        "revision" : "999fd70c7803da89f3904d635a6815a2a7cd7585",
-        "version" : "1.10.0"
+        "revision" : "870f4d5fe5fcfedc13f25d70e103150511746404",
+        "version" : "1.11.0"
       }
     },
     {
@@ -294,8 +294,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/SJJC-Team/whooshing-fluent.git",
       "state" : {
-        "revision" : "10dd640ccddc5b51beaf11a0380672fc89da591c",
-        "version" : "1.0.1"
+        "revision" : "73c493426642a9551aba1ba4c4a3532b5960db3d",
+        "version" : "1.0.2"
       }
     },
     {
@@ -303,8 +303,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/SJJC-Team/whooshing-vapor.git",
       "state" : {
-        "revision" : "1a5f4ff2d3f46fd758022bba97aafec09970721d",
-        "version" : "1.0.6"
+        "revision" : "6cab3308295423f109a505d2f73aeec5ef726d69",
+        "version" : "1.0.7"
       }
     },
     {
@@ -312,8 +312,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/SJJC-Team/whooshing.toolbox-basic.git",
       "state" : {
-        "revision" : "b73d51f082bf38e72e7c538f845be70a1d68b8df",
-        "version" : "1.4.0"
+        "revision" : "e11c118d7d8201c626e2e7d687aad154c1ce241e",
+        "version" : "1.4.4"
       }
     },
     {
@@ -321,8 +321,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/SJJC-Team/whooshing.toolbox-pgsql.git",
       "state" : {
-        "revision" : "51f02516db88646d3f24968d0c989c7c2956f3a3",
-        "version" : "1.0.3"
+        "revision" : "91d19bb8307b3bc3c2e6c9c0693d7b783cb9d55c",
+        "version" : "1.0.5"
       }
     }
   ],

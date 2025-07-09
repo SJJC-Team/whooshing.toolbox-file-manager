@@ -6,9 +6,9 @@ import PackageDescription
 let package = Package(
     name: "whooshing.toolbox-file-storage",
     platforms: [
-        .macOS(.v13),
+        .macOS(.v11),
         .iOS(.v14),
-        .watchOS(.v7),
+        .watchOS(.v6),
         .tvOS(.v14),
     ],
     products: [
@@ -17,8 +17,8 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
         .package(url: "https://github.com/apple/swift-crypto.git", "1.0.0" ..< "4.0.0"),
-        .package(url: "https://github.com/SJJC-Team/whooshing.toolbox-basic.git", .upToNextMajor(from: "1.4.0")),
-        .package(url: "https://github.com/SJJC-Team/whooshing.toolbox-pgsql.git", .upToNextMajor(from: "1.0.3")),
+        .package(url: "https://github.com/SJJC-Team/whooshing.toolbox-basic.git", .upToNextMajor(from: "1.4.4")),
+        .package(url: "https://github.com/SJJC-Team/whooshing.toolbox-pgsql.git", .upToNextMajor(from: "1.0.5")),
     ],
     targets: [
         .target(

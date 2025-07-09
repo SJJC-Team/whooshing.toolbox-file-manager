@@ -198,7 +198,7 @@ public final class FileStorage: @unchecked Sendable {
         filePermission: UnixPermission? = nil,
         debuging: Debuging? = nil
     ) async -> Res<FileStorage, Errcase> {
-        await .async {
+        await .async { () throws(Errcase.ErrType) in
             try await FileStorage(
                 eventLoop: eventLoop,
                 storagePath: storagePath,
