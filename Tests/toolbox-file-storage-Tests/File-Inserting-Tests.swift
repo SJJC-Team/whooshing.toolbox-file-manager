@@ -130,7 +130,7 @@ struct FileInsertionTests {
                 index = dataTest.count - Int(i)
             }
             
-            var right = dataTest.subdata(in: index..<dataTest.count)
+            let right = dataTest.subdata(in: index..<dataTest.count)
             dataTest = dataTest.subdata(in: 0..<index)
             
             dataTest += insertData
