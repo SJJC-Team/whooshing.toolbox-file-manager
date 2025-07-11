@@ -42,7 +42,7 @@
 在你的 Package.swift 加入：
 
 ``` swift
-.package(url: "https://github.com/SJJC-Team/whooshing.toolbox-file-storage", .upToNextMajor(from: "1.0.1"))
+.package(url: "https://github.com/SJJC-Team/whooshing.toolbox-file-storage", .upToNextMajor(from: "1.0.2"))
 ```
 
 在依赖模块中引入:

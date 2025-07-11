@@ -114,7 +114,7 @@ public struct FileSystemTools {
     @inlinable
     public static func resolvePath(basePath: String = FileManager.default.currentDirectoryPath, append pathToAppend: String) -> String {
         let base = (basePath as NSString).expandingTildeInPath
-        let baseURL = URL(fileURLWithPath: base).deletingLastPathComponent()
+        let baseURL = URL(fileURLWithPath: base)
         let appended = (pathToAppend as NSString).expandingTildeInPath
         let finalURL: URL
         if appended.hasPrefix("/") {
