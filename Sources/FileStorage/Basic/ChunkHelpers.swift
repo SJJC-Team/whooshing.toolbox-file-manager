@@ -677,18 +677,18 @@ extension AsyncSequence where Element == ByteBuffer, Element: Sendable, Self: Se
     /// 从 AsyncSequence<ByteBuffer> 中按指定大小分块输出
     func chunkedChannel(_ chunkSize: Int64) -> AsyncThrowingChannel<ByteBuffer, Error> {
         let channel = AsyncThrowingChannel<ByteBuffer, Error>()
-        Task {
+        Task.detached {
             do {
                 var curChunk = ByteBuffer()
                 for try await var chunk in self {
                     curChunk.writeBuffer(&chunk)
                     while curChunk.readableBytes >= chunkSize {
                         let data = curChunk.readSlice(length: Int(chunkSize))!
-                        await channel.send(data)
+                        await channel.send(data.cloned)
                     }
                 }
                 if curChunk.readableBytes > 0 {
-                    await channel.send(curChunk)
+                    await channel.send(curChunk.cloned)
                 }
                 channel.finish()
             } catch {
@@ -696,5 +696,13 @@ extension AsyncSequence where Element == ByteBuffer, Element: Sendable, Self: Se
             }
         }
         return channel
+    }
+}
+
+extension ByteBuffer {
+    public var cloned: ByteBuffer {
+        var new = ByteBufferAllocator().buffer(capacity: self.readableBytes)
+        new.writeBytes(self.readableBytesView)
+        return new
     }
 }

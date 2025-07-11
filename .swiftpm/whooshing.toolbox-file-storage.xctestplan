@@ -1,0 +1,24 @@
+{
+  "configurations" : [
+    {
+      "id" : "C5AFAAE0-92C5-47A6-9CB5-A0B3026DDFC8",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "toolbox-file-storage-Tests",
+        "name" : "toolbox-file-storage-Tests"
+      }
+    }
+  ],
+  "version" : 1
+}

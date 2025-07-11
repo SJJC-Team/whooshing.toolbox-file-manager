@@ -54,7 +54,7 @@ public extension FileStorage {
         
         /// 转换为 FileManager 可用的权限属性字典。
         /// 包含合法性验证逻辑，若失败将返回对应错误。
-        public  var attributes: Res<[FileAttributeKey: Any], Errcase> {
+        public var attributes: Res<[FileAttributeKey: Any], Errcase> {
             var permissions: [FileAttributeKey: Any] = [:]
             
             switch owner {
@@ -100,12 +100,12 @@ public extension FileStorage {
 }
 
 /// 工具集，用于路径处理与用户/组合法性验证。
-struct FileSystemTools {
+public struct FileSystemTools {
     /// 拼接路径的工具函数。
     /// - 参数 basePath: 基础路径，默认为当前目录。
     /// - 参数 pathToAppend: 要追加的路径。
     /// - 返回: 标准化后的完整路径。
-    static func resolvePath(basePath: String = FileManager.default.currentDirectoryPath, append pathToAppend: String) -> String {
+    public static func resolvePath(basePath: String = FileManager.default.currentDirectoryPath, append pathToAppend: String) -> String {
         let base = (basePath as NSString).expandingTildeInPath
         let baseURL = URL(fileURLWithPath: base).deletingLastPathComponent()
         let appended = (pathToAppend as NSString).expandingTildeInPath

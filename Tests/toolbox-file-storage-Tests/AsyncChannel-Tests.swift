@@ -42,4 +42,29 @@ struct AsyncChannelTests {
         #expect(size == totalSize)
         #expect(totalByte.readableBytes == 0)
     }
+    
+    @Test("ByteBuffer 深拷贝")
+    func byteBufferDeepCopyTest() async throws {
+        func bufferPointer(_ buf: ByteBuffer) -> UnsafeRawPointer? {
+            buf.withUnsafeReadableBytes { ptr in
+                return ptr.baseAddress
+            }
+        }
+
+        let buf1 = ByteBufferAllocator().buffer(string: "Hello, world")
+        let buf1Pointer = bufferPointer(buf1)
+
+        let buf2 = buf1.cloned
+        let buf2Pointer = bufferPointer(buf2)
+        
+        #expect(buf1Pointer != buf2Pointer)
+        #expect(buf1 == buf2)
+
+        // 还可以修改 buf2 验证是否影响 buf1
+        var buf2mut = buf2
+        buf2mut.writeString("!!!")
+        
+        #expect(buf1.getString(at: 0, length: buf1.readableBytes) == "Hello, world")
+        #expect(buf2mut.getString(at: 0, length: buf2mut.readableBytes) == "Hello, world!!!")
+    }
 }

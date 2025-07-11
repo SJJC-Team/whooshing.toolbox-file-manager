@@ -18,6 +18,7 @@ jobs:
       with_release_mode_testing: true
       with_musl: false
       with_api_check: false
+      with_tsan: false
       ios_xcodebuild_action: ''
 
       only_build: false
