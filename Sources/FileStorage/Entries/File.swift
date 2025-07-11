@@ -7,6 +7,8 @@ import ErrorHandle
 import Cryptos
 import NIOFileSystem
 import NIOAdvanced
+import Crypto
+import DataConvertable
 
 public typealias FileReadWriter = FileReader & FileWriter
 
@@ -163,6 +165,7 @@ public typealias FileReadWriter = FileReader & FileWriter
 ///     throw error
 /// }
 /// ```
+@frozen
 public struct File: StorageEntry, Sendable {
     /// 文件唯一标识符。
     public let id: UUID
@@ -171,19 +174,20 @@ public struct File: StorageEntry, Sendable {
     /// 文件的 MIME 类型。
     public let mimeType: MimeType
     /// 文件大小（字节）。
-    public var size: Int64 { fileIndex.size! }
+    @inlinable public var size: Int64 { fileIndex.size! }
     /// 文件在存储系统中的路径。
     public let path: StoragePath
     /// 文件创建时间。
     public let createdAt: Date
     /// 文件最后更新时间。
-    public var updatedAt: Date { fileIndex.updatedAt }
+    @inlinable public var updatedAt: Date { fileIndex.updatedAt }
     
     /// 文件存储系统引用。
     public unowned let storage: FileStorage
     
     public typealias Errcase = FileStorage.Errcase
     
+    @usableFromInline
     let fileIndex: FileIndex
     
     /// 通过 FileIndex 创建 File 实例。
@@ -192,6 +196,7 @@ public struct File: StorageEntry, Sendable {
     ///   - parent: 父目录路径。
     ///   - storage: 文件存储系统。
     /// - Throws: 如果索引类型不为文件或缺少必要信息，抛出错误。
+    @inlinable
     init(
         from index: FileIndex,
         parent: StoragePath,
@@ -219,6 +224,7 @@ public extension File {
     /// - Parameters:
     ///     - action: 传入只读句柄，执行自定义动作
     /// - Returns: 本次自定义动作的结果，或抛出错误
+    @inlinable
     func withReader<T, G>(_ action: @escaping @Sendable (FileReader) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
         __withReader(action)
     }
@@ -228,6 +234,7 @@ public extension File {
     /// - Parameters:
     ///     - action: 传入只写句柄，执行自定义动作
     /// - Returns: 本次自定义动作的结果，或抛出错误
+    @inlinable
     func withWriter<T, G>(_ action: @escaping @Sendable (FileWriter) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
         __withWriter(action)
     }
@@ -237,6 +244,7 @@ public extension File {
     /// - Parameters:
     ///     - action: 传入只写句柄，执行自定义动作
     /// - Returns: 本次自定义动作的结果，或抛出错误
+    @inlinable
     func withReadWriter<T, G>(_ action: @escaping @Sendable (FileReadWriter) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
         __withReadWriter(action)
     }
@@ -264,6 +272,7 @@ public extension File {
     ///     throw error
     /// }
     /// ```
+    @inlinable
     func openForRead() async -> Res<FileReader, Errcase> {
         await __openForRead()
     }
@@ -289,6 +298,7 @@ public extension File {
     ///     throw error
     /// }
     /// ```
+    @inlinable
     func openForWrite() async -> Res<FileWriter, Errcase> {
         await __openForWrite()
     }
@@ -314,6 +324,7 @@ public extension File {
     ///     throw error
     /// }
     /// ```
+    @inlinable
     func openForReadAndWrite() async -> Res<FileReadWriter, Errcase> {
         await __openForReadAndWrite()
     }
@@ -331,6 +342,7 @@ public extension File {
     }
     
     /// 获取文件大小。
+    @inlinable
     func getSize() -> EventLoopRes<Int64, FileStorage.Errcase> {
         storage.eventLoop.makeSucceededResult(size)
     }
@@ -344,6 +356,7 @@ public extension File {
     ///
     /// - Warning: 若指定 force，则连同文件数据及文件索引都会一并从硬盘中删除，该操作无法撤销，
     /// 您需要自己承担该风险。
+    @inlinable
     func delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
         __delete(force: force)
     }
@@ -355,6 +368,7 @@ public extension File {
     /// - Parameter name: 新名称。
     ///
     /// - Returns: 更新后的文件对象。
+    @inlinable
     func rename(as name: String) -> EventLoopRes<File, Errcase> {
         fileIndex.name = name
         fileIndex.mimeType = name.fileExtension == nil ? .unknow : .init(fileExtension: name.fileExtension!)
@@ -396,6 +410,7 @@ public extension File {
 // MARK: - 内部实现
 
 extension File {
+    @inlinable
     func __withReader<T, G>(_ action: @escaping @Sendable (FileReader) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
         storage.eventLoop.makeFutureWithTask {
             let reader = try await openForRead().get()
@@ -411,6 +426,7 @@ extension File {
     }
     
     /// 打开文件并传入只写句柄执行异步操作。
+    @inlinable
     func __withWriter<T, G>(_ action: @escaping @Sendable (FileWriter) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
         storage.eventLoop.makeFutureWithTask {
             let writer = try await openForWrite().get()
@@ -426,6 +442,7 @@ extension File {
     }
     
     /// 打开文件并传入读写句柄执行异步操作。
+    @inlinable
     func __withReadWriter<T, G>(_ action: @escaping @Sendable (FileReadWriter) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
         storage.eventLoop.makeFutureWithTask {
             let readWriter = try await openForReadAndWrite().get()
@@ -440,6 +457,7 @@ extension File {
         }.withError(Errcase.openFileFailed)
     }
     
+    @usableFromInline
     func __openForRead() async -> Res<FileReader, Errcase> {
         await .async { () throws(BscError<Errcase>) in
             let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
@@ -460,6 +478,7 @@ extension File {
         }
     }
     
+    @usableFromInline
     func __openForWrite() async -> Res<FileWriter, Errcase> {
         await .async { () throws(BscError<Errcase>) in
             let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
@@ -480,6 +499,7 @@ extension File {
         }
     }
     
+    @usableFromInline
     func __openForReadAndWrite() async -> Res<FileReadWriter, Errcase> {
         await .async { () throws(BscError<Errcase>) in
             let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
@@ -500,6 +520,7 @@ extension File {
         }
     }
     
+    @usableFromInline
     func __delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
         if force {
             return storage.db.eventLoop.makeFutureWithTask {
@@ -538,7 +559,8 @@ extension File {
 
 extension File {
     
-    enum FileParaFetchErrcase: String, ErrList {
+    @frozen
+    public enum FileParaFetchErrcase: String, ErrList {
         /// 数据库查询失败。
         case databaseFailed = "数据库查询失败"
         /// 文件不存在。
@@ -549,6 +571,7 @@ extension File {
     
     /// 获取加密文件的实际路径与关联的 FileCrypto 对象。
     /// - Parameter withDeleted: 是否允许从软删除记录中读取。
+    @usableFromInline
     func getRealFilePath(withDeleted: Bool = false) async throws(BscError<FileParaFetchErrcase>) -> (FilePath, FileCrypto) {
         
         let qc: QueryBuilder<FileCrypto>
@@ -577,6 +600,7 @@ extension File {
     }
     
     /// 构造打开加密文件所需的参数：文件路径、FileCrypto 和派生密钥。
+    @inlinable
     func makeFileHandleParas() async throws(BscError<FileParaFetchErrcase>) -> (
         FileCrypto, Crypto.Symm.Key, FilePath
     ) {
@@ -593,6 +617,7 @@ extension File {
 
 extension File: CustomStringConvertible {
     /// 返回文件的简要描述信息。
+    @inlinable
     public var description: String {
         """
         File (

@@ -5,6 +5,7 @@ import Foundation
 public extension FileStorage {
     
     /// 表示文件系统中可选的 Unix 权限配置，包括所有者、所属组和 POSIX 权限位。
+    @frozen
     struct UnixPermission: Sendable {
         /// 所有者用户标识，可指定 UID 或用户名。
         public let owner: User?
@@ -22,6 +23,7 @@ public extension FileStorage {
         }
         
         /// 文件所属组的标识方式。
+        @frozen
         public enum Group: Sendable {
             /// 使用组 ID 指定。
             case id(CUnsignedLong)
@@ -34,6 +36,7 @@ public extension FileStorage {
         ///   - owner: 可选所有者标识。
         ///   - group: 可选所属组标识。
         ///   - rwx: 可选权限位设置。
+        @inlinable
         public init(owner: User? = nil, group: Group? = nil, rwx: FilePermissions? = nil) {
             self.owner = owner
             self.group = group
@@ -41,6 +44,7 @@ public extension FileStorage {
         }
         
         /// 表示在设置权限时可能遇到的错误。
+        @frozen
         public enum Errcase: String, ErrList {
             /// 提供的用户 ID 无效。
             case uidNotValid = "用户 id 无效"
@@ -54,6 +58,7 @@ public extension FileStorage {
         
         /// 转换为 FileManager 可用的权限属性字典。
         /// 包含合法性验证逻辑，若失败将返回对应错误。
+        @inlinable
         public var attributes: Res<[FileAttributeKey: Any], Errcase> {
             var permissions: [FileAttributeKey: Any] = [:]
             
@@ -100,11 +105,13 @@ public extension FileStorage {
 }
 
 /// 工具集，用于路径处理与用户/组合法性验证。
+@frozen
 public struct FileSystemTools {
     /// 拼接路径的工具函数。
     /// - 参数 basePath: 基础路径，默认为当前目录。
     /// - 参数 pathToAppend: 要追加的路径。
     /// - 返回: 标准化后的完整路径。
+    @inlinable
     public static func resolvePath(basePath: String = FileManager.default.currentDirectoryPath, append pathToAppend: String) -> String {
         let base = (basePath as NSString).expandingTildeInPath
         let baseURL = URL(fileURLWithPath: base).deletingLastPathComponent()
@@ -119,11 +126,13 @@ public struct FileSystemTools {
     }
     
     /// 检查指定组名是否存在
+    @usableFromInline
     static func isValidGroupname(_ groupname: String) -> Bool {
         return getgrnam(groupname) != nil
     }
 
     /// 检查指定组 ID 是否存在
+    @usableFromInline
     static func isValidGID(_ gid: gid_t) -> Bool {
         return getgrgid(gid) != nil
     }
@@ -131,6 +140,7 @@ public struct FileSystemTools {
     /// 判断用户名是否存在
     /// - Parameter username: 用户名字符串（如 "root"）
     /// - Returns: 如果存在该用户名，返回 true；否则 false
+    @usableFromInline
     static func isValidUsername(_ username: String) -> Bool {
         return getpwnam(username) != nil
     }
@@ -138,6 +148,7 @@ public struct FileSystemTools {
     /// 判断 UID 是否存在系统用户
     /// - Parameter uid: 用户 ID（如 0, 501）
     /// - Returns: 如果存在该 UID 的用户，返回 true；否则 false
+    @usableFromInline
     static func isValidUID(_ uid: uid_t) -> Bool {
         return getpwuid(uid) != nil
     }

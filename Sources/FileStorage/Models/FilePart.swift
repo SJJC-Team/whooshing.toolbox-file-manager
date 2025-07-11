@@ -1,10 +1,14 @@
 import PgSQL
+import Fluent
 import Foundation
 import DataConvertable
 
+@usableFromInline
 final class FilePart: PGModel, @unchecked Sendable {
+    @usableFromInline
     static let name = "file_parts"
     
+    @usableFromInline
     struct Fields: PGFields {
         let id = PGField("id", .uuid)                               .primary
         let fileId = PGField("file_id", .uuid)                      .required.foreign(FileIndex.self, \.id, onDelete: .cascade)
@@ -16,28 +20,34 @@ final class FilePart: PGModel, @unchecked Sendable {
         let encryptedStart = PGField("encrypted_start", .int64)     .required
         let encryptedEnd = PGField("encrypted_end", .int64)         .required
         let deleteAt = PGField("delete_at", .string)
+        
+        @inlinable
+        init() {}
     }
     
+    @usableFromInline
     static let fields = Fields()
     
-    @ID(key: .id)                               var id: UUID?
+    @usableFromInline @ID(key: .id)                               var id: UUID?
     
-    @Parent(fields.fileId)                      var fileIndex: FileIndex
-    @Field(fields.tagStart)                     var tagStart: Int
+    @usableFromInline @Parent(fields.fileId)                      var fileIndex: FileIndex
+    @usableFromInline @Field(fields.tagStart)                     var tagStart: Int
     
-    @Field(fields.byteStart)                    var byteStart: Int64
-    @Field(fields.byteEnd)                      var byteEnd: Int64
+    @usableFromInline @Field(fields.byteStart)                    var byteStart: Int64
+    @usableFromInline @Field(fields.byteEnd)                      var byteEnd: Int64
     
-    @Field(fields.byteHeadIgnore)               var byteHeadIgnore: Int64
-    @Field(fields.byteTailIgnore)               var byteTailIgnore: Int64
+    @usableFromInline @Field(fields.byteHeadIgnore)               var byteHeadIgnore: Int64
+    @usableFromInline @Field(fields.byteTailIgnore)               var byteTailIgnore: Int64
     
-    @Field(fields.encryptedStart)               var encryptedStart: Int64
-    @Field(fields.encryptedEnd)                 var encryptedEnd: Int64
+    @usableFromInline @Field(fields.encryptedStart)               var encryptedStart: Int64
+    @usableFromInline @Field(fields.encryptedEnd)                 var encryptedEnd: Int64
     
-    @Timestamp(fields.deleteAt, on: .delete)    var deleteAt: Date!
+    @usableFromInline @Timestamp(fields.deleteAt, on: .delete)    var deleteAt: Date!
     
+    @inlinable
     init() {}
     
+    @usableFromInline
     init(
         fileIndexId: UUID,
         tagStart: Int,
@@ -60,11 +70,15 @@ final class FilePart: PGModel, @unchecked Sendable {
 }
 
 extension FilePart {
+    @usableFromInline
     struct MIG: PGMigration, Sendable {
+        @usableFromInline
         typealias DataModel = FilePart
         
+        @usableFromInline
         var tdeEncrypt: Bool
         
+        @inlinable
         init(tdeEncrypt: Bool = true) {
             self.tdeEncrypt = tdeEncrypt
         }

@@ -137,6 +137,7 @@ public final class FileStorage: @unchecked Sendable {
     /// 具体另见 `FileStorage.new(eventLoop: storagePath: dbConfig: masterkey: ...)` 工厂函数
     ///
     /// - Warning: 仅在测试和开发环境中适用，否则将会面临数据库明文存储的风险
+    @frozen
     public struct Debuging: Sendable {
         /// 是否启用 PostgreSQL tde 加密功能
         ///
@@ -158,19 +159,19 @@ public final class FileStorage: @unchecked Sendable {
     /// 日志记录器。
     public let logger: Logger
     /// 文件存储的根目录。
-    public var rootDir: Directory { self.__rootDir! }
+    @inlinable public var rootDir: Directory { self.__rootDir! }
     /// 当前文件系统使用的权限设置（如果有）。
     public let filePermission: UnixPermission?
     /// 加密文件所使用的后缀名，默认为 `FileStorage.DefaultCryptoFileExtension`
     public let fileExtension: String
     
-    let storagePath: String
-    let indexDatabase: PGDatabase
-    let masterKey: Crypto.Symm.Key
-    let rootDirIndex: FileIndex
-    var db: PGDatabase { indexDatabase }
-    private var __rootDir: Directory?
-    private let dbs: Databases
+    @usableFromInline let storagePath: String
+    @usableFromInline let indexDatabase: PGDatabase
+    @usableFromInline let masterKey: Crypto.Symm.Key
+    @usableFromInline let rootDirIndex: FileIndex
+    @usableFromInline var db: PGDatabase { indexDatabase }
+    @usableFromInline private(set) var __rootDir: Directory?
+    @usableFromInline let dbs: Databases
     
     /// 创建并初始化一个新的 FileStorage 实例（异步）。
     ///
@@ -188,6 +189,7 @@ public final class FileStorage: @unchecked Sendable {
     ///
     /// - Warning: 该初始化函数并不会自主根据 `storagePath` 创建文件夹，请保证该文件夹存在于
     /// 文件系统中，且拥有足够的权限。若无法打开该文件夹，将抛出相关错误
+    @inlinable
     public static func new(
         eventLoop: EventLoop,
         storagePath: String,
@@ -212,6 +214,7 @@ public final class FileStorage: @unchecked Sendable {
         }
     }
 
+    @usableFromInline
     init(
         eventLoop: EventLoop,
         storagePath: String,
@@ -304,6 +307,7 @@ public final class FileStorage: @unchecked Sendable {
 
 extension Database {
     /// 使用自定义错误类型封装的事务执行器。
+    @inlinable
     func trans<T, G>(_ closure: @escaping @Sendable (Self) -> EventLoopResult<T, G>) -> EventLoopResult<T, G> {
         self.trans { db in
             closure(db).wrapped
@@ -311,6 +315,7 @@ extension Database {
     }
     
     /// 使用 Fluent 的事务封装异步回调。
+    @inlinable
     func trans<T>(_ closure: @escaping @Sendable (Self) -> EventLoopFuture<T>) -> EventLoopFuture<T> {
         self.transaction { db in
             closure(db as! Self)
@@ -318,6 +323,7 @@ extension Database {
     }
     
     /// 在 async/await 环境中执行数据库事务。
+    @inlinable
     func trans<T: Sendable>(_ closure: @escaping @Sendable (Self) async throws -> T) async throws -> T {
         try await self.transaction { db in
             try await closure(db as! Self)

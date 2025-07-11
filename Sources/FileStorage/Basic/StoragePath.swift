@@ -1,4 +1,5 @@
 import ErrorHandle
+import Foundation
 
 /// 该模块 `FileStorage` 中存储的文件的相对路径结构体，封装路径的组成部分并提供路径操作。
 ///
@@ -135,6 +136,7 @@ import ErrorHandle
 /// - Warning: `FileStorage` 模块中的每个文件并不真实存在于文件系统中，无论是路径还是内容，
 /// 从文件系统中都是不可读的。该类型 `StoragePath` 仅仅模仿文件系统，抽象了文件
 /// 在该系统中的路径。请勿与普通的文件路径混用，勿使用该路径直接从文件系统中读取数据。
+@frozen
 public struct StoragePath: Sendable {
     
     /// 路径的组成部分数组。
@@ -148,6 +150,7 @@ public struct StoragePath: Sendable {
     
     /// 通过路径组件数组初始化。
     /// - Parameter components: 路径组件数组。
+    @inlinable
     public init(components: [String]) {
         self.components = components
         self.string = components.joined(separator: "/")
@@ -155,6 +158,7 @@ public struct StoragePath: Sendable {
     
     /// 通过同类型切片初始化。
     /// - Parameter slice: StoragePath 的切片。
+    @inlinable
     public init(_ slice: Slice<Self>) {
         var comps: [String] = []
         for c in slice {
@@ -166,12 +170,14 @@ public struct StoragePath: Sendable {
 
 extension StoragePath: CustomStringConvertible {
     /// 路径的描述字符串，即路径字符串。
+    @inlinable
     public var description: String { self.string }
 }
 
 extension StoragePath: ExpressibleByStringLiteral {
     /// 通过字符串字面量初始化，自动拆分路径组件。
     /// - Parameter value: 字符串字面量。
+    @inlinable
     public init(stringLiteral value: StringLiteralType) {
         self.components = value.components(separatedBy: "/").filter { !$0.isEmpty }
         self.string = components.joined(separator: "/")
@@ -181,6 +187,7 @@ extension StoragePath: ExpressibleByStringLiteral {
 extension StoragePath: ExpressibleByArrayLiteral {
     /// 通过路径组件数组字面量初始化。
     /// - Parameter value: 字符串字面量。
+    @inlinable
     public init(arrayLiteral elements: String...) {
         self.init(components: elements)
     }
@@ -188,21 +195,26 @@ extension StoragePath: ExpressibleByArrayLiteral {
 
 extension StoragePath: Collection {
     /// 集合起始索引。
+    @inlinable
     public var startIndex: Int { components.startIndex }
     
     /// 集合结束索引。
+    @inlinable
     public var endIndex: Int { components.endIndex }
     
     /// 路径最后一个组件。
+    @inlinable
     public var last: String? { components.last }
     
     /// 是否为空路径（根路径）。
+    @inlinable
     public var isRoot: Bool { isEmpty }
     
     /// 获取父路径。
     ///
     /// - Returns: 父路径。
     /// - Note: 根路径无父路径，调用将导致运行时错误。
+    @inlinable
     public var parent: StoragePath {
         guard !self.isRoot else { preconditionFailure("无法获取根目录的父目录") }
         var comps = self.components
@@ -213,6 +225,7 @@ extension StoragePath: Collection {
     /// 获取下一个索引。
     /// - Parameter i: 当前索引。
     /// - Returns: 下一个索引。
+    @inlinable
     public func index(after i: Int) -> Int {
         components.index(after: i)
     }
@@ -220,6 +233,7 @@ extension StoragePath: Collection {
     /// 根据索引获取路径组件。
     /// - Parameter position: 组件索引。
     /// - Returns: 路径组件字符串。
+    @inlinable
     public subscript(position: Int) -> String {
         get {
             components[position]
@@ -228,47 +242,53 @@ extension StoragePath: Collection {
 }
 
 extension StoragePath: Equatable, AdditiveArithmetic {
+    @inlinable
     public static var zero: StoragePath { .root }
     
     /// 判断两个路径是否相等（组件逐一比较）。
+    @inlinable
     public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.components == rhs.components
     }
     
     /// 路径拼接：追加字符串组件。
-    public static func + (lhs: StoragePath, rhs: String) -> StoragePath { lhs.add(rhs, to: .tail) }
+    @inlinable public static func + (lhs: StoragePath, rhs: String) -> StoragePath { lhs.add(rhs, to: .tail) }
     /// 路径拼接：字符串 + 路径，将字符串添加到路径头。
-    public static func + (lhs: String, rhs: StoragePath) -> StoragePath { rhs.add(lhs, to: .head) }
+    @inlinable public static func + (lhs: String, rhs: StoragePath) -> StoragePath { rhs.add(lhs, to: .head) }
     /// 路径拼接：追加另一路径组件。
-    public static func + (lhs: StoragePath, rhs: StoragePath) -> StoragePath { lhs.add(rhs, to: .tail) }
+    @inlinable public static func + (lhs: StoragePath, rhs: StoragePath) -> StoragePath { lhs.add(rhs, to: .tail) }
     
     
     /// 路径拼接：裁剪尾组件。
-    public static func - (lhs: StoragePath, rhs: String) -> StoragePath { lhs.remove(rhs, from: .tail) }
+    @inlinable public static func - (lhs: StoragePath, rhs: String) -> StoragePath { lhs.remove(rhs, from: .tail) }
     /// 路径拼接：裁剪尾组件。
-    public static func - (lhs: String, rhs: StoragePath) -> StoragePath { StoragePath(stringLiteral: lhs).remove(rhs, from: .tail) }
+    @inlinable public static func - (lhs: String, rhs: StoragePath) -> StoragePath { StoragePath(stringLiteral: lhs).remove(rhs, from: .tail) }
     /// 路径拼接：从尾裁剪 rhs 数量的组件。
-    public static func - (lhs: StoragePath, rhs: Int) -> StoragePath { lhs.remove(of: rhs, from: .tail) }
+    @inlinable public static func - (lhs: StoragePath, rhs: Int) -> StoragePath { lhs.remove(of: rhs, from: .tail) }
     /// 路径拼接：从尾裁剪一个 path。
-    public static func - (lhs: StoragePath, rhs: StoragePath) -> StoragePath { lhs.remove(rhs, from: .tail) }
+    @inlinable public static func - (lhs: StoragePath, rhs: StoragePath) -> StoragePath { lhs.remove(rhs, from: .tail) }
     
     
     /// 路径拼接赋值操作：追加路径。
-    public static func += (lhs: inout StoragePath, rhs: String) { lhs = lhs + rhs }
+    @inlinable public static func += (lhs: inout StoragePath, rhs: String) { lhs = lhs + rhs }
     /// 路径拼接赋值操作：追加路径。
-    public static func += (lhs: inout StoragePath, rhs: StoragePath) { lhs = lhs + rhs }
+    @inlinable public static func += (lhs: inout StoragePath, rhs: StoragePath) { lhs = lhs + rhs }
     
     
     /// 路径拼接赋值操作：从尾裁剪组件。
+    @inlinable
     public static func -= (lhs: inout StoragePath, rhs: String) { lhs = lhs - rhs }
     /// 路径拼接赋值操作：从尾裁剪 rhs 数量的组件。
+    @inlinable
     public static func -= (lhs: inout StoragePath, rhs: Int) { lhs = lhs - rhs }
     /// 路径拼接赋值操作：从尾裁剪一个 path。
+    @inlinable
     public static func -= (lhs: inout StoragePath, rhs: StoragePath) { lhs = lhs - rhs }
 }
 
 extension StoragePath {
     /// 方向枚举
+    @frozen
     public enum Direction {
         case head
         case tail
@@ -278,6 +298,7 @@ extension StoragePath {
     ///
     /// - Parameter path: 待比较路径。
     /// - Returns: 如果是前缀路径，返回 true。
+    @inlinable
     public func isPrefixPath(of path: StoragePath) -> Bool {
         guard path.count >= self.count else { return false }
         for (i, name) in components.enumerated() {
@@ -290,6 +311,7 @@ extension StoragePath {
     ///
     /// - Parameter path: 待比较路径。
     /// - Returns: 如果是后缀路径，返回 true。
+    @inlinable
     public func isSuffixPath(of path: StoragePath) -> Bool {
         guard path.count >= self.count else { return false }
         for (i, name) in components.reversed().enumerated() {
@@ -301,6 +323,7 @@ extension StoragePath {
     /// 追加字符串组件并返回新路径。
     /// - Parameter component: 字符串组件，支持包含多个用 `/` 分隔的部分。
     /// - Returns: 新路径。
+    @inlinable
     public func add(_ component: String, to direction: Direction = .tail) -> StoragePath {
         let newComponents = component.components(separatedBy: "/").filter { !$0.isEmpty }
         return add(components: newComponents, to: direction)
@@ -309,6 +332,7 @@ extension StoragePath {
     /// 追加多个字符串组件并返回新路径。
     /// - Parameter components: 字符串数组。
     /// - Returns: 新路径。
+    @inlinable
     public func add(components: [String], to direction: Direction = .tail) -> StoragePath {
         switch direction {
         case .head: return .init(components: components + self.components)
@@ -319,6 +343,7 @@ extension StoragePath {
     /// 追加另一路径的组件并返回新路径。
     /// - Parameter path: 另一路径。
     /// - Returns: 新路径。
+    @inlinable
     public func add(_ path: StoragePath, to direction: Direction = .tail) -> StoragePath {
         switch direction {
         case .head: return .init(components: path.components + self.components)
@@ -336,6 +361,7 @@ extension StoragePath {
     ///
     /// - Warning: 所要删除的路径串必须为原路径的子串，头子串或尾子串取决于删除方向
     /// 若非子串，会引发程序断言，导致崩溃
+    @inlinable
     public func remove(_ subPath: String, from direction: Direction = .tail) -> StoragePath {
         remove(StoragePath(stringLiteral: subPath), from: direction)
     }
@@ -350,6 +376,7 @@ extension StoragePath {
     ///
     /// - Warning: 所要删除的路径串必须为原路径的子串，头子串或尾子串取决于删除方向
     /// 若非子串，会引发程序断言，导致崩溃
+    @inlinable
     public func remove(components: [String], from direction: Direction = .tail) -> StoragePath {
         remove(StoragePath(components: components), from: direction)
     }
@@ -364,6 +391,7 @@ extension StoragePath {
     ///
     /// - Warning: 所要删除的路径串必须为原路径的子串，头子串或尾子串取决于删除方向
     /// 若非子串，会引发程序断言，导致崩溃
+    @inlinable
     public func remove(_ subPath: StoragePath, from direction: Direction = .tail) -> StoragePath {
         if direction == .tail {
             precondition(subPath.isSuffixPath(of: self), "裁剪失败，subPath 并非路径尾子串。removing \(subPath) of \(self)")
@@ -382,6 +410,7 @@ extension StoragePath {
     /// - Returns: 删除后的新路径。
     ///
     /// - Warning: 所要删除的项目数量必须小与或等于原路径的项目数，否则会引发程序断言，导致崩溃
+    @inlinable
     public func remove(of count: Int, from direction: Direction = .tail) -> StoragePath {
         precondition(self.count >= count, "要裁剪的路径项数目超限，预期为 \(self.count), 却得到 \(count)")
         var components = self.components

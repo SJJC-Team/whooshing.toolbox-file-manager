@@ -1,19 +1,17 @@
 import NIOCore
 import AsyncAlgorithms
-import NIOAdvanced
 import Foundation
 import ErrorHandle
 import Cryptos
+import NIOAdvanced
 
-/// 查看同级 Diagrams 文件夹中的图片以理解原理
-/// - [1.文件覆盖写入算法.png](./Diagrams/1.文件覆盖写入算法.png)
-/// - [2.文件插入数据算法.png](./Diagrams/2.文件插入数据算法.png)
 enum ChunkHelpers {
-    
+    @frozen
     public enum IndexErrcase: String, ErrList {
         case intersectionFailed = "落点计算失败"
     }
     
+    @frozen
     public enum RangeErrcase: String, ErrList {
         case rangeBeginIndexNotFound = "Range 起始边界未找到"
         case rangeSizeExceed = "Range 结束边界未找到，其大小过大"
@@ -24,13 +22,15 @@ enum ChunkHelpers {
 
 extension ChunkHelpers {
     /// 用于记录数据落点分析的结果
+    @usableFromInline
     struct IntersectionResult: Equatable, CustomStringConvertible {
-        let rangeOffset: Int64
-        let rangeInIntersection: Bool
-        let chunkIndex: Int
-        let chunkBegin: Int64
-        let chunks: BufferSpace
+        @usableFromInline let rangeOffset: Int64
+        @usableFromInline let rangeInIntersection: Bool
+        @usableFromInline let chunkIndex: Int
+        @usableFromInline let chunkBegin: Int64
+        @usableFromInline let chunks: BufferSpace
         
+        @inlinable
         var description: String {
             "(rangeOffset: \(rangeOffset), rangeInIntersection: \(rangeInIntersection), chunkIndex: \(chunkIndex), chunkBegin: \(chunkBegin), chunks: [\(chunks.map { String($0) }.joined(separator: ", "))])"
         }
@@ -74,6 +74,7 @@ extension ChunkHelpers {
     ///         <------------------------------------->                     : chunks
     /// ```
     ///
+    @inlinable
     static func rangeIntersection(_ range: Range<Int64>, in chunks: BufferSpace, offset: Int64) throws(BscError<RangeErrcase>) -> IntersectionResult {
         
         guard chunks.count > 0 || range.lowerBound > 0 else {
@@ -189,11 +190,13 @@ extension ChunkHelpers {
     }
     
     /// 数据落点分析算法
+    @inlinable
     static func rangeIntersection(_ range: ClosedRange<Int64>, in chunks: BufferSpace, offset: Int64) throws(BscError<RangeErrcase>) -> IntersectionResult {
         try rangeIntersection(.init(range), in: chunks, offset: offset)
     }
     
     /// 从数据块寻址算法
+    @inlinable
     static func index(_ index: Int64, in buffer: BufferSpace, offset: Int64) throws(BscError<IndexErrcase>) -> IntersectionResult {
         let intersection = try required(throws: BscError<IndexErrcase>(.intersectionFailed)) {
             try rangeIntersection(index..<index, in: buffer, offset: offset)
@@ -204,15 +207,19 @@ extension ChunkHelpers {
 
 extension ChunkHelpers {
     
+    @inlinable
     static var minChunkSize: Int64 { 8192 }
     
+    @usableFromInline
     struct ReseparationResult: Sendable, Equatable, CustomStringConvertible {
         
+        @usableFromInline
         enum HeadCombine: CustomStringConvertible {
             case none
             case separate
             case combine
             
+            @inlinable
             var description: String {
                 switch self {
                 case .none: return "none"
@@ -222,14 +229,17 @@ extension ChunkHelpers {
             }
         }
         
+        @usableFromInline
         enum TailCombine: Equatable, CustomStringConvertible {
             
+            @usableFromInline
             struct TailParas: Equatable, CustomStringConvertible {
                 let length: Int64
                 let chunkIndex: Int
                 let chunkBegin: Int64
                 let byteOffset: Int64
                 
+                @inlinable
                 var description: String {
                     "tailLength: \(length), tailChunkIndex: \(chunkIndex), tailChunkBegin: \(chunkBegin), tailByteIndex: \(byteOffset)"
                 }
@@ -239,6 +249,7 @@ extension ChunkHelpers {
             case separate(_ tailPara: TailParas)
             case combine(_ tailPara: TailParas)
             
+            @inlinable
             var tail: TailParas? {
                 switch self {
                 case .none: return nil
@@ -247,6 +258,7 @@ extension ChunkHelpers {
                 }
             }
             
+            @inlinable
             var description: String {
                 switch self {
                 case .none: return "none"
@@ -259,12 +271,14 @@ extension ChunkHelpers {
         let headCombine: HeadCombine
         let tailCombine: TailCombine
         
+        @inlinable
         var description: String {
             "(head: \(headCombine), tail: \(tailCombine))"
         }
     }
     
     /// 小数据合并算法
+    @inlinable
     static func shouldMerge(_ chunk1: Int64, chunk2: Int64) -> Bool {
         chunk1 <= minChunkSize || chunk2 <= minChunkSize
     }
@@ -319,6 +333,7 @@ extension ChunkHelpers {
     ///                            <--------->                  : tail.byteOffset
     ///
     /// ```
+    @inlinable
     static func replacementReseparation(_ chunks: BufferSpace, at begin: Int64, in originChunks: BufferSpace, offset: Int64) throws(BscError<RangeErrcase>) -> ReseparationResult {
         guard begin >= 0 else {
             throw .init(.rangeSizeInvalid, "起始索引值无效，预期 >= 0，但得到 \(begin)")
@@ -438,6 +453,7 @@ extension ChunkHelpers {
     /// <----->                                                 : tail.byteOffset
     ///
     /// ```
+    @inlinable
     static func insertionReseparation(_ chunks: BufferSpace, at begin: Int64, in originChunk: Int64, offset: Int64) throws(BscError<RangeErrcase>) -> ReseparationResult {
         
         guard begin >= 0, originChunk >= 0 else {
@@ -481,6 +497,7 @@ extension ChunkHelpers {
     ///     - fileCrypto: 该分割的 FilePart 的加密分割信息
     ///     - indexResult: 该次分割的详细描述
     /// - Returns: 修改原 part 中的参数的同时，返回新的分割出来的 filePart, 若无法进行分割则返回 nil
+    @inlinable
     static func filePartSeparate(
         in part: FilePart,
         fileCrypto: FileCrypto,
@@ -526,20 +543,24 @@ extension ChunkHelpers {
     }
 }
 
-struct BufferSpace: ExpressibleByArrayLiteral {
+@usableFromInline
+struct BufferSpace: ExpressibleByArrayLiteral, Sendable {
     
-    typealias ArrayLiteralElement = Int64
-    typealias Index = Int
-    typealias Element = Int64
+    @usableFromInline typealias ArrayLiteralElement = Int64
+    @usableFromInline typealias Index = Int
+    @usableFromInline typealias Element = Int64
     
-    private var contents: Contents
+    @usableFromInline
+    private(set) var contents: Contents
     
-    enum Contents: Equatable {
+    @usableFromInline
+    enum Contents: Equatable, Sendable {
         case array(_ array: [Element])
         case chunk(_ chunkSize: Element, total: Element)
         case buffers(_ buffers: [ByteBuffer])
     }
     
+    @inlinable
     init(_ contents: Contents) {
         if case let .chunk(chunk, total: _) = contents {
             guard chunk > 0 else {
@@ -549,12 +570,14 @@ struct BufferSpace: ExpressibleByArrayLiteral {
         self.contents = contents
     }
     
+    @inlinable
     init(arrayLiteral elements: Int64...) {
         self.contents = .array(elements)
     }
 }
 
 extension BufferSpace: Equatable {
+    @inlinable
     static func == (lhs: Self, rhs: Self) -> Bool {
         for (i, buffer) in lhs.enumerated() {
             guard rhs[i] == buffer else { return false }
@@ -564,6 +587,7 @@ extension BufferSpace: Equatable {
 }
 
 extension BufferSpace {
+    @inlinable
     var unifiedChunk: (size: Int64, total: Int64)? {
         switch contents {
         case .array(let buffers):
@@ -586,12 +610,14 @@ extension BufferSpace {
         }
     }
     
+    @inlinable
     func sum(in range: ClosedRange<Int>) -> Int64 {
         precondition(range.lowerBound >= 0, "指定的数组 sum 起始边界无效")
         precondition(range.upperBound < self.count, "指定的数组 sum 结束边界无效，预期在范围 \"\(range.lowerBound)..<\(self.count)\"，却得到 \(range.upperBound)")
         return sum(in: Range<Int>(range))
     }
     
+    @inlinable
     func sum(in range: Range<Int>) -> Int64 {
         precondition(range.lowerBound >= 0, "指定的数组 sum 起始边界无效")
         precondition(range.upperBound <= self.count, "指定的数组 sum 结束边界无效，预期在范围 \"\(range.lowerBound)...\(self.count)\"，却得到 \(range.upperBound)")
@@ -620,8 +646,10 @@ extension BufferSpace {
 }
 
 extension BufferSpace: Collection {
+    @inlinable
     var startIndex: Int { 0 }
     
+    @inlinable
     var endIndex: Int {
         switch contents {
         case .array(let buffers): return buffers.endIndex
@@ -635,6 +663,7 @@ extension BufferSpace: Collection {
         }
     }
     
+    @inlinable
     var last: Int64? {
         switch contents {
         case .array(let buffers): return buffers.last
@@ -649,6 +678,7 @@ extension BufferSpace: Collection {
         }
     }
     
+    @inlinable
     func index(after i: Int) -> Int {
         switch contents {
         case .array(let buffers): return buffers.index(after: i)
@@ -657,6 +687,7 @@ extension BufferSpace: Collection {
         }
     }
     
+    @inlinable
     subscript(position: Int) -> Int64 {
         switch contents {
         case .array(let buffers): return buffers[position]
@@ -675,6 +706,7 @@ extension BufferSpace: Collection {
 
 extension AsyncSequence where Element == ByteBuffer, Element: Sendable, Self: Sendable {
     /// 从 AsyncSequence<ByteBuffer> 中按指定大小分块输出
+    @inlinable
     func chunkedChannel(_ chunkSize: Int64) -> AsyncThrowingChannel<ByteBuffer, Error> {
         let channel = AsyncThrowingChannel<ByteBuffer, Error>()
         Task {
@@ -700,6 +732,7 @@ extension AsyncSequence where Element == ByteBuffer, Element: Sendable, Self: Se
 }
 extension AsyncSequence where Element == Data, Element: Sendable, Self: Sendable {
     /// 从 AsyncSequence<Data> 中按指定大小分块输出
+    @inlinable
     func chunkedChannel(_ chunkSize: Int64) -> AsyncThrowingChannel<Data, Error> {
         let channel = AsyncThrowingChannel<Data, Error>()
         Task {
@@ -731,6 +764,7 @@ extension AsyncSequence where Element == Data, Element: Sendable, Self: Sendable
 }
 
 extension ByteBuffer {
+    @inlinable
     public var cloned: ByteBuffer {
         var new = ByteBufferAllocator().buffer(capacity: self.readableBytes)
         new.writeBytes(self.readableBytesView)

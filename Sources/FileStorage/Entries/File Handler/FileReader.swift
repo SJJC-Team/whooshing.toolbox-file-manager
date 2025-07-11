@@ -7,6 +7,7 @@ import AsyncAlgorithms
 import Cryptos
 import FluentKit
 import Foundation
+import SQLKit
 
 /// 指定读取文件内容的范围。
 ///
@@ -75,6 +76,7 @@ protocol __FileReader: FileReader, __FileContentHandler {
 }
 
 extension __FileReader {
+    @inlinable
     var fileReadHandler: ReadableFileHandle {
         guard let handler = self.fileHandler as? ReadableFileHandle else {
             fatalError("FileHandler 配置不正确")
@@ -82,6 +84,7 @@ extension __FileReader {
         return handler
     }
     
+    @inlinable
     func read(part: ReadPart) -> AsyncThrowingChannel<Data, Error> {
         // 创建读取任务准备进行异步读取
         let reader = AsyncThrowingChannel<Data, Error>()
@@ -96,6 +99,7 @@ extension __FileReader {
         return reader
     }
     
+    @inlinable
     func readData(part: ReadPart) -> EventLoopRes<Data, File.Errcase> {
         let channel = read(part: part)
         
@@ -108,6 +112,7 @@ extension __FileReader {
         }.withError(File.Errcase.readFileFailed)
     }
     
+    @inlinable
     func readChunks(
         part: ReadPart,
         _ callback: @escaping @Sendable (Data) -> EventLoopResult<Void, Error>
@@ -121,6 +126,7 @@ extension __FileReader {
         }.withError(File.Errcase.readFileFailed)
     }
     
+    @inlinable
     func readChunks(
         part: ReadPart,
         _ callback: @escaping @Sendable (Data) async throws -> ()
@@ -142,6 +148,7 @@ enum PartIntersectionResult {
 
 extension __FileReader {
     // 带有 back pressure 机制地从加密文件中按指定的块读取数据并解密
+    @usableFromInline
     func backPressureRead(part readPart: ReadPart, reader: AsyncThrowingChannel<Data, Error>) async throws(BscError<File.Errcase>) {
         // 准备读取的范围
         let readRange: Range<Int64>
@@ -278,6 +285,7 @@ extension __FileReader {
 }
 
 extension File {
+    
     struct Reader: __FileReader, @unchecked Sendable {
         typealias ReadableFileHandle = ReadFileHandle
         

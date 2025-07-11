@@ -12,6 +12,7 @@ import Foundation
 ///
 /// - `begin(of:)`：从文件开头开始的偏移量，默认从 0 开始。
 /// - `end(of:)`：从文件结尾开始的偏移量，默认从 0 开始。
+@frozen
 public enum ByteIndex: Sendable {
     case begin(of: Int64 = 0)
     case end(of: Int64 = 0)
@@ -21,6 +22,7 @@ public enum ByteIndex: Sendable {
 ///
 /// - `insert`：在指定位置插入数据，后续内容顺移。
 /// - `replace`：在指定位置替换数据，覆盖原有内容。
+@frozen
 public enum WriteMethod: Sendable {
     case insert
     case replace
@@ -118,6 +120,7 @@ public protocol FileWriter: FileContentHandler {
 }
 
 public extension FileWriter {
+    @inlinable
     func write(at: ByteIndex, bytes: Data, method: WriteMethod = .replace) -> EventLoopResult<Void, BscError<File.Errcase>> {
         switch method {
         case .insert: return insert(at: at, bytes: bytes)
@@ -125,6 +128,7 @@ public extension FileWriter {
         }
     }
     
+    @inlinable
     func write(at: ByteIndex, from: AsyncThrowingChannel<Data, Error>, method: WriteMethod = .replace) -> EventLoopResult<Void, BscError<File.Errcase>> {
         switch method {
         case .insert: return insert(at: at, from: from)
@@ -132,14 +136,17 @@ public extension FileWriter {
         }
     }
     
+    @inlinable
     func insert(at: ByteIndex, bytes: Data) -> EventLoopResult<Void, BscError<File.Errcase>> {
         insert(at: at, from: makeChannel(with: bytes))
     }
     
+    @inlinable
     func replace(at: ByteIndex, bytes: Data) -> EventLoopResult<Void, BscError<File.Errcase>> {
         replace(at: at, from: makeChannel(with: bytes))
     }
     
+    @inlinable
     internal func makeChannel(with bytes: Data) -> AsyncThrowingChannel<Data, Error> {
         let res = AsyncThrowingChannel<Data, Error>()
         Task {
@@ -151,6 +158,7 @@ public extension FileWriter {
 }
 
 extension ByteIndex {
+    @inlinable
     internal func index(fileSize: Int64) -> Int64 {
         switch self {
         case .begin(of: let i):
@@ -167,6 +175,7 @@ protocol __FileWriter: FileWriter, __FileContentHandler {
 }
 
 extension __FileWriter {
+    @inlinable
     var fileWriteHandler: WritableFileHandle {
         guard let handler = self.fileHandler as? WritableFileHandle else {
             fatalError("FileHandler 配置不正确")
@@ -174,6 +183,7 @@ extension __FileWriter {
         return handler
     }
     
+    @inlinable
     func insert(at index: ByteIndex, from channel: AsyncThrowingChannel<Data, Error>) -> EventLoopResult<Void, BscError<File.Errcase>> {
         let insertIndex = index.index(fileSize: fileIndex.size!)
         return storage.db.eventLoop.makeResultWithTask { () throws(BscError<File.Errcase>) in
@@ -185,6 +195,7 @@ extension __FileWriter {
         }
     }
     
+    @inlinable
     func replace(at index: ByteIndex, from channel: AsyncThrowingChannel<Data, Error>) -> EventLoopResult<Void, BscError<File.Errcase>> {
         let insertIndex = index.index(fileSize: fileIndex.size!)
         return storage.db.eventLoop.makeResultWithTask { () throws(BscError<File.Errcase>) in
@@ -199,6 +210,7 @@ extension __FileWriter {
         }
     }
     
+    @inlinable
     func remove(in range: Range<Int64>) -> EventLoopResult<Void, BscError<File.Errcase>> {
         storage.db.eventLoop.makeResultWithTask { () throws(BscError<File.Errcase>) in
             try await removeBytes(in: range, willInsertNext: false)
@@ -209,12 +221,14 @@ extension __FileWriter {
         }
     }
     
+    @inlinable
     func remove(in range: ClosedRange<Int64>) -> EventLoopResult<Void, BscError<File.Errcase>> {
         remove(in: .init(range))
     }
 }
 
-enum FileWriterError: String, ErrList {
+@frozen
+public enum FileWriterError: String, ErrList {
     case separateFilePartFailed = "文件数据片分割失败"
     case appendDataFailed = "向文件追加数据时失败"
 }
@@ -232,6 +246,7 @@ enum RemoveBytesSeparationResult {
 extension __FileWriter {
     /// 将提供的数据插入到某个位置。
     /// 该函数会进行数据写入，但不会更新数据库中的指针位置，数据库操作将会作为返回值返回，需要调用者自行执行数据库操作
+    @usableFromInline
     func backPressureInsert(
         at byteStartIndex: Int64,
         from channel: AsyncThrowingChannel<Data, Error>,
@@ -374,6 +389,7 @@ extension __FileWriter {
     
     /// 从文件中移除某个区间的字节数据。
     /// 该函数不会进行任何文件系统操作，也不会更新数据库中的指针位置，数据库操作将会作为返回值返回，需要调用者自行执行数据库操作
+    @usableFromInline
     func removeBytes(
         in range: Range<Int64>,
         willInsertNext: Bool

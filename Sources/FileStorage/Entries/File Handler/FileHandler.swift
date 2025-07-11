@@ -31,16 +31,19 @@ protocol __FileContentHandler: FileContentHandler {
 }
 
 extension __FileContentHandler {
+    @inlinable
     var fileHandler: FileHandleProtocol {
         lock.withLock {
             __fileHandler
         }
     }
     
+    @inlinable
     var eventLoop: any EventLoop {
         self.storage.eventLoop
     }
     
+    @inlinable
     func close() async throws(BscError<File.Errcase>) {
         do {
             try await fileHandler.close()

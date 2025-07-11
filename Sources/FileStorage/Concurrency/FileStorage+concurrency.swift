@@ -1,6 +1,8 @@
 import ErrorHandle
+import NIOAdvanced
 
 public extension FileStorage {
+    @inlinable
     func createDirectory(
         at path: StoragePath,
         withIntermediateDirectories createIfNeed: Bool = false,
@@ -13,12 +15,14 @@ public extension FileStorage {
         ).get()
     }
     
+    @inlinable
     func getDirectory(
         at path: StoragePath
     ) async throws(BscError<Errcase>) -> Directory {
         try await self.getDirectory(at: path).get()
     }
     
+    @inlinable
     func createFile(
         at path: StoragePath,
         chunkSize: Int64 = 65535,
@@ -33,6 +37,7 @@ public extension FileStorage {
         ).get()
     }
     
+    @inlinable
     func getFile(
         at path: StoragePath
     ) async throws(BscError<Errcase>) -> File {

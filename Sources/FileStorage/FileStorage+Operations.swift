@@ -10,6 +10,7 @@ import NIOFileSystem
 
 public extension FileStorage {
     /// FileStorage 所有可能抛出的错误类型枚举，按功能划分为数据库错误、目录操作错误、文件操作错误。
+    @frozen
     enum Errcase: String, ErrList {
         case databaseInitFailed = "数据库连接失败"
         case fileSystemInitFailed = "文件系统初始化失败"
@@ -48,6 +49,7 @@ public extension FileStorage {
     ///   - slience: 如果目录已存在，是否忽略错误。
     ///
     /// - Returns: 创建完成或已存在的目录。
+    @inlinable
     func createDirectory(
         at path: StoragePath,
         withIntermediateDirectories createIfNeed: Bool = false,
@@ -87,6 +89,7 @@ public extension FileStorage {
     /// 
     /// - Parameter path: 目标目录路径。
     /// - Returns: 目录对象。
+    @inlinable
     func getDirectory(at path: StoragePath) -> EventLoopRes<Directory, Errcase> {
         get(at: path)
             .errCast(Errcase.getDirectoryFailed, path.string)
@@ -109,6 +112,7 @@ public extension FileStorage {
     ///   - slience: 如果文件已存在，是否忽略错误。
     ///
     /// - Returns: 文件对象。
+    @inlinable
     func createFile(
         at path: StoragePath,
         chunkSize: Int64 = 65535,
@@ -149,6 +153,7 @@ public extension FileStorage {
     ///
     /// - Parameter path: 文件路径。
     /// - Returns: 文件对象。
+    @inlinable
     func getFile(at path: StoragePath) -> EventLoopRes<File, Errcase> {
         get(at: path)
             .errCast(Errcase.getFileFailed)
@@ -166,6 +171,7 @@ public extension FileStorage {
 extension FileStorage {
     
     /// 获取指定路径的文件索引。
+    @inlinable
     func get(at path: StoragePath) -> EventLoopRes<FileIndex, FindEntryErrcase> {
         findEntry(at: path) {
             guard let fileIndex = $0.index else {
@@ -175,9 +181,11 @@ extension FileStorage {
         }
     }
     
+    @usableFromInline
     typealias ActionContext = (index: FileIndex?, path: StoragePath, parent: FileIndex)
     
     /// 用于路径查找过程中可能出现的错误类型。
+    @frozen
     public enum FindEntryErrcase: String, ErrList {
         case getChildFailed = "获取子实例时发生错误"
         case actionFailed = "自定义任务失败"
@@ -187,6 +195,7 @@ extension FileStorage {
         case databaseFailed = "数据库操作出现错误"
     }
     
+    @inlinable
     func findEntry<ErrorType>(
         at path: StoragePath,
         action: @escaping @Sendable (ActionContext) -> EventLoopResult<FileIndex, ErrorType>
@@ -212,6 +221,7 @@ extension FileStorage {
     }
     
     /// 用于数据库读写过程中可能出现的错误类型。
+    @frozen
     public enum DatabaseErrcase: String, ErrList {
         case saveFailed = "数据库保存动作失败"
         case queryFailed = "数据库查询失败"
@@ -220,6 +230,7 @@ extension FileStorage {
     }
     
     /// 获取指定目录下的子文件或子目录。
+    @usableFromInline
     func getChild(
         at index: FileIndex,
         name: String
@@ -240,6 +251,7 @@ extension FileStorage {
     }
     
     /// 获取指定路径的父目录索引，可递归创建。
+    @usableFromInline
     func getParent(
         at path: StoragePath,
         withIntermediateDirectories createIfNeed: Bool = false
@@ -271,7 +283,9 @@ extension FileStorage {
     }
     
     /// 创建新的目录索引项。
-    @Sendable func newDirIndex(
+    @Sendable
+    @usableFromInline
+    func newDirIndex(
         parent: FileIndex?,
         path: StoragePath
     ) -> EventLoopRes<FileIndex, DatabaseErrcase> {
@@ -285,7 +299,9 @@ extension FileStorage {
     }
     
     /// 创建新的文件索引项，并写入实际文件。
-    @Sendable func newFileIndex(
+    @Sendable
+    @usableFromInline
+    func newFileIndex(
         parent: FileIndex?,
         path: StoragePath,
         chunkSize: Int64

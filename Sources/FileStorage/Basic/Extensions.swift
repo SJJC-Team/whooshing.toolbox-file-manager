@@ -5,6 +5,7 @@ public extension String {
     /// `"example.txt".fileExtension` 返回 `"txt"`
     /// `"archive.tar.gz".fileExtension` 返回 `"gz"`
     /// `"filename".fileExtension` 返回 `nil`
+    @inlinable
     var fileExtension: String? {
         guard let dotIndex = self.lastIndex(of: ".") else { return nil }
         let extIndex = self.index(after: dotIndex)

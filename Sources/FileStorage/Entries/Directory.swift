@@ -3,6 +3,7 @@ import NIOCore
 import Fluent
 import FluentSQL
 import FluentKit
+import AsyncKit
 import ErrorHandle
 import NIOAdvanced
 import NIOFileSystem
@@ -95,6 +96,7 @@ import NIOFileSystem
 /// // 需要注意的是，删除一个文件夹也会删除其所有的子项目，因此请谨慎操作
 /// try await movedDir.delete(force: true)
 /// ```
+@frozen
 public struct Directory: StorageEntry, Sendable {
     
     /// 目录 ID，根目录为 nil。
@@ -111,6 +113,7 @@ public struct Directory: StorageEntry, Sendable {
     /// 文件存储系统引用。
     public unowned let storage: FileStorage
     
+    @usableFromInline
     let fileIndex: FileIndex
     
     public typealias Errcase = FileStorage.Errcase
@@ -121,6 +124,7 @@ public struct Directory: StorageEntry, Sendable {
     ///   - parent: 父路径（可选）。
     ///   - storage: 文件存储上下文。
     /// - Throws: 如果类型不匹配或索引无效，抛出错误。
+    @inlinable
     init(
         from index: FileIndex,
         parent: StoragePath?,
@@ -141,6 +145,7 @@ public struct Directory: StorageEntry, Sendable {
 
 public extension Directory {
     /// 是否为根目录。
+    @inlinable
     var isRoot: Bool { self.id == nil }
     
     /// 检查该目录是否存在（同步）。
@@ -164,6 +169,7 @@ public extension Directory {
     /// 获取目录下所有子项（文件和目录）的总大小。
     ///
     /// 该操作需要进行迭代遍历子项目大小进行计算，因此较为耗时。
+    @inlinable
     func getSize() -> EventLoopRes<Int64, FileStorage.Errcase> {
         subitems().wrapped
             .flatMapEach(on: storage.eventLoop) {
@@ -178,6 +184,7 @@ public extension Directory {
     /// 获取当前目录下的所有子项（文件与目录）
     ///
     /// - Returns: 第一层子项数组。
+    @inlinable
     func subitems() -> EventLoopRes<[any StorageEntry], Errcase> {
         __subitems(withDeleted: false)
     }
@@ -192,6 +199,7 @@ public extension Directory {
     /// - Warning: 若指定 force，则连同文件数据及文件索引都会一并从硬盘中删除，该操作无法撤销。
     /// 另外，删除一个目录，则连同其下的所有子目录和子文件都会一并删除，若指定了 force，该操作无法撤销，
     /// 您需要自己承担该风险。
+    @inlinable
     func empty(force: Bool = false) -> EventLoopRes<Void, Errcase> {
         __subitems(withDeleted: force).wrapped
             .flatMapEach(on: storage.eventLoop) {
@@ -210,6 +218,7 @@ public extension Directory {
     /// - Warning: 若指定 force，则连同文件数据及文件索引都会一并从硬盘中删除，该操作无法撤销。
     /// 另外，删除一个目录，则连同其下的所有子目录和子文件都会一并删除，若指定了 force，该操作无法撤销，
     /// 您需要自己承担该风险。
+    @inlinable
     func delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
         __delete(force: force)
     }
@@ -221,6 +230,7 @@ public extension Directory {
     /// - Parameter name: 新名称。
     ///
     /// - Returns: 更新后的目录对象。
+    @inlinable
     func rename(as name: String) -> EventLoopRes<Directory, Errcase> {
         __rename(as: name)
     }
@@ -234,6 +244,7 @@ public extension Directory {
     ///   - name: 可选的新名称。
     ///
     /// - Returns: 更新后的目录对象。
+    @inlinable
     func move(to dir: Directory, as name: String? = nil) -> EventLoopRes<Directory, Errcase> {
         __move(to: dir, as: name)
     }
@@ -242,6 +253,7 @@ public extension Directory {
 // MARK: - 内部实现
 
 extension Directory {
+    @usableFromInline
     func __subitems(withDeleted: Bool = false) -> EventLoopRes<[any StorageEntry], Errcase> {
         
         let r: QueryBuilder<FileIndex>
@@ -274,6 +286,7 @@ extension Directory {
         }
     }
     
+    @usableFromInline
     func __delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
         guard
             !self.isRoot,
@@ -383,6 +396,7 @@ extension Directory {
         }
     }
     
+    @usableFromInline
     func __rename(as name: String) -> EventLoopRes<Directory, Errcase> {
         guard !self.isRoot else {
             return storage.eventLoop.makeFailedResult(Errcase.renameDirectoryFailed, "不可重命名根目录")
@@ -398,6 +412,7 @@ extension Directory {
         }
     }
     
+    @usableFromInline
     func __move(to dir: Directory, as name: String? = nil) -> EventLoopRes<Directory, Errcase> {
         guard !self.isRoot else {
             return storage.eventLoop.makeFailedResult(Errcase.moveDirectoryFailed, "不可操作根目录")
@@ -427,6 +442,7 @@ extension Directory {
 
 extension Directory: CustomStringConvertible {
     /// 目录的调试描述信息。
+    @inlinable
     public var description: String {
         """
         Directory (

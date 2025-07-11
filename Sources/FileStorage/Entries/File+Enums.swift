@@ -1,6 +1,7 @@
 public extension File {
     
     /// 文件类型枚举，表示文件或目录。
+    @frozen
     enum Typed: String, Codable, Sendable {
         /// 普通文件
         case file = "file"
@@ -9,6 +10,7 @@ public extension File {
     }
     
     /// MIME 类型枚举，表示文件的媒体类型。
+    @frozen
     enum MimeType: String, Codable, Sendable {
         // 文本类型
         case plain = "text/plain"
@@ -43,6 +45,7 @@ public extension File {
 
         /// 根据文件扩展名初始化 MIME 类型。
         /// - Parameter fileExtension: 文件扩展名（不带点），不区分大小写。
+        @inlinable
         public init(fileExtension: String) {
             switch fileExtension.lowercased() {
             case "txt": self = .plain
