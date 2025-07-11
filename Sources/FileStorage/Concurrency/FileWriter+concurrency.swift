@@ -1,29 +1,30 @@
 import ErrorHandle
 import NIOCore
 import AsyncAlgorithms
+import Foundation
 
 public extension FileWriter {
-    func write(at: ByteIndex, bytes: ByteBuffer, method: WriteMethod = .replace) async throws(BscError<File.Errcase>) {
+    func write(at: ByteIndex, bytes: Data, method: WriteMethod = .replace) async throws(BscError<File.Errcase>) {
         try await self.write(at: at, bytes: bytes, method: method).get()
     }
     
-    func write(at: ByteIndex, from: AsyncThrowingChannel<ByteBuffer, Error>, method: WriteMethod = .replace) async throws(BscError<File.Errcase>) {
+    func write(at: ByteIndex, from: AsyncThrowingChannel<Data, Error>, method: WriteMethod = .replace) async throws(BscError<File.Errcase>) {
         try await self.write(at: at, from: from).get()
     }
     
-    func insert(at: ByteIndex, bytes: ByteBuffer) async throws(BscError<File.Errcase>) {
+    func insert(at: ByteIndex, bytes: Data) async throws(BscError<File.Errcase>) {
         try await self.insert(at: at, bytes: bytes).get()
     }
     
-    func replace(at: ByteIndex, bytes: ByteBuffer) async throws(BscError<File.Errcase>) {
+    func replace(at: ByteIndex, bytes: Data) async throws(BscError<File.Errcase>) {
         try await self.replace(at: at, bytes: bytes).get()
     }
     
-    func insert(at: ByteIndex, from: AsyncThrowingChannel<ByteBuffer, Error>) async throws(BscError<File.Errcase>) {
+    func insert(at: ByteIndex, from: AsyncThrowingChannel<Data, Error>) async throws(BscError<File.Errcase>) {
         try await self.insert(at: at, from: from).get()
     }
     
-    func replace(at: ByteIndex, from: AsyncThrowingChannel<ByteBuffer, Error>) async throws(BscError<File.Errcase>) {
+    func replace(at: ByteIndex, from: AsyncThrowingChannel<Data, Error>) async throws(BscError<File.Errcase>) {
         try await self.replace(at: at, from: from).get()
     }
     

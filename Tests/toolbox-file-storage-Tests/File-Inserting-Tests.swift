@@ -80,14 +80,14 @@ struct FileInsertionTests {
         
         let file = try await storage.getFile(at: path)
         
-        let data: ByteBuffer
+        let data: Data
         
         switch testingData {
-        case .string(let s): data = ByteBuffer(string: s)
+        case .string(let s): data = s.data(using: .utf8)!
         case .random(let size): data = randomData(size: size)
         }
         
-        let dataSize = Int64(data.readableBytes)
+        let dataSize = Int64(data.count)
         
         try await file.withWriter { writer in
             try await writer.insert(at: .begin(), bytes: data)
@@ -106,12 +106,12 @@ struct FileInsertionTests {
         var dataTest = data
         
         for insertion in insertions {
-            print(dataTest.readableBytes)
+            print(dataTest.count)
             
-            let insertData: ByteBuffer
+            let insertData: Data
             
             switch insertion.data {
-            case .string(let s): insertData = ByteBuffer(string: s)
+            case .string(let s): insertData = s.data(using: .utf8)!
             case .random(let size): insertData = randomData(size: size)
             }
             
@@ -127,26 +127,26 @@ struct FileInsertionTests {
                 index = Int(i)
                 
             case .end(of: let i):
-                index = dataTest.readableBytes - Int(i)
+                index = dataTest.count - Int(i)
             }
             
-            var right = dataTest.getSlice(at: index, length: dataTest.readableBytes - index) ?? ByteBuffer()
-            dataTest = dataTest.getSlice(at: 0, length: index) ?? ByteBuffer()
+            var right = dataTest.subdata(in: index..<dataTest.count)
+            dataTest = dataTest.subdata(in: 0..<index)
             
-            dataTest.writeImmutableBuffer(insertData)
-            dataTest.writeBuffer(&right)
+            dataTest += insertData
+            dataTest += right
             
 //            print("dataTest: \(dataTest.getString(at: 0, length: dataTest.readableBytes) ?? "nil")")
 //            print("fileData: \(fileData.getString(at: 0, length: fileData.readableBytes) ?? "nil")")
             
             #expect(dataTest == fileData)
-            #expect(file.size == dataTest.readableBytes)
+            #expect(file.size == dataTest.count)
             
             let parts = try await FilePart.query(on: storage.db)
                 .filter(\.$fileIndex.$id == file.id)
                 .all()
             
-            #expect(parts.reduce(0, { $0 + ($1.byteEnd - $1.byteStart) }) == dataTest.readableBytes)
+            #expect(parts.reduce(0, { $0 + ($1.byteEnd - $1.byteStart) }) == dataTest.count)
             
             let zeroParts = try await FilePart.query(on: storage.db)
                 .filter(\.$byteStart == \.$byteEnd)

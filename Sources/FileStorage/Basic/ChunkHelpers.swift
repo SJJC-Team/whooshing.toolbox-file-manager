@@ -677,7 +677,7 @@ extension AsyncSequence where Element == ByteBuffer, Element: Sendable, Self: Se
     /// 从 AsyncSequence<ByteBuffer> 中按指定大小分块输出
     func chunkedChannel(_ chunkSize: Int64) -> AsyncThrowingChannel<ByteBuffer, Error> {
         let channel = AsyncThrowingChannel<ByteBuffer, Error>()
-        Task.detached {
+        Task {
             do {
                 var curChunk = ByteBuffer()
                 for try await var chunk in self {
@@ -695,6 +695,37 @@ extension AsyncSequence where Element == ByteBuffer, Element: Sendable, Self: Se
                 channel.fail(error)
             }
         }
+        return channel
+    }
+}
+extension AsyncSequence where Element == Data, Element: Sendable, Self: Sendable {
+    /// 从 AsyncSequence<Data> 中按指定大小分块输出
+    func chunkedChannel(_ chunkSize: Int64) -> AsyncThrowingChannel<Data, Error> {
+        let channel = AsyncThrowingChannel<Data, Error>()
+        Task {
+            do {
+                var curChunk = Data()
+                for try await chunk in self {
+                    curChunk.append(chunk)
+
+                    while curChunk.count >= chunkSize {
+                        let size = Int(chunkSize)
+                        let part = curChunk.prefix(size)
+                        await channel.send(part)
+                        curChunk.removeFirst(size)
+                    }
+                }
+
+                if !curChunk.isEmpty {
+                    await channel.send(curChunk)
+                }
+
+                channel.finish()
+            } catch {
+                channel.fail(error)
+            }
+        }
+
         return channel
     }
 }

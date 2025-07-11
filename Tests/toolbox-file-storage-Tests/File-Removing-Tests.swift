@@ -157,14 +157,14 @@ struct FileRemovingTests {
         
         let file = try await storage.getFile(at: path)
         
-        let data: ByteBuffer
+        let data: Data
         
         switch testingData {
-        case .string(let s): data = ByteBuffer(string: s)
+        case .string(let s): data = s.data(using: .utf8)!
         case .random(let size): data = randomData(size: size)
         }
         
-        let dataSize = Int64(data.readableBytes)
+        let dataSize = Int64(data.count)
         
         try await file.withWriter { writer in
             try await writer.insert(at: .begin(), bytes: data)
@@ -183,29 +183,29 @@ struct FileRemovingTests {
         var dataTest = data
         
         for removing in removings {
-            print(dataTest.readableBytes)
+            print(dataTest.count)
             
             let fileData = try await file.withReadWriter { readWriter in
                 try await readWriter.remove(in: removing)
                 return try await readWriter.readData(part: .all)
             }
             
-            var right = dataTest.getSlice(at: Int(removing.upperBound), length: dataTest.readableBytes - Int(removing.upperBound)) ?? ByteBuffer()
-            dataTest = dataTest.getSlice(at: 0, length: Int(removing.lowerBound)) ?? ByteBuffer()
+            let right = dataTest.subdata(in: Int(removing.upperBound)..<dataTest.count)
+            dataTest = dataTest.subdata(in: 0..<Int(removing.lowerBound))
             
-            dataTest.writeBuffer(&right)
+            dataTest += right
 
 //            print("dataTest: \(dataTest.getString(at: 0, length: dataTest.readableBytes) ?? "nil")")
 //            print("fileData: \(fileData.getString(at: 0, length: fileData.readableBytes) ?? "nil")")
             
             #expect(dataTest == fileData)
-            #expect(file.size == dataTest.readableBytes)
+            #expect(file.size == dataTest.count)
             
             let parts = try await FilePart.query(on: storage.db)
                 .filter(\.$fileIndex.$id == file.id)
                 .all()
             
-            #expect(parts.reduce(0, { $0 + ($1.byteEnd - $1.byteStart) }) == dataTest.readableBytes)
+            #expect(parts.reduce(0, { $0 + ($1.byteEnd - $1.byteStart) }) == dataTest.count)
             
             let zeroParts = try await FilePart.query(on: storage.db)
                 .filter(\.$byteStart == \.$byteEnd)

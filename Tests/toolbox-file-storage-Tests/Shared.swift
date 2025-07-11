@@ -59,7 +59,7 @@ struct TestingShared {
         let s = try await FileStorage.new(
             eventLoop: eventLoop,
             storagePath: testingStorageDir,
-            dbConfigure: .init(hostname: dbHost, port: dbPort, username: "postgres", password: "password", database: "postgres", tls: .disable),
+            dbConfigure: .init(hostname: dbHost, port: dbPort, username: "clwang", password: "password", database: "postgres", tls: .disable),
             masterKey: key,
             logger: .init(label: "FileStorage-Testing"),
             filePermission: permission,
@@ -70,12 +70,20 @@ struct TestingShared {
     }
 }
 
-func randomData(size: Int) -> ByteBuffer {
+func randomBuffer(size: Int) -> ByteBuffer {
     var buffer = ByteBufferAllocator().buffer(capacity: size)
     var rng = SystemRandomNumberGenerator()
     let randomBytes = (0..<size).map { _ in UInt8.random(in: 0...255, using: &rng) }
     buffer.writeBytes(randomBytes)
     return buffer
+}
+
+func randomData(size: Int) -> Data {
+    var buffer = ByteBufferAllocator().buffer(capacity: size)
+    var rng = SystemRandomNumberGenerator()
+    let randomBytes = (0..<size).map { _ in UInt8.random(in: 0...255, using: &rng) }
+    buffer.writeBytes(randomBytes)
+    return .init(buffer: buffer)
 }
 
 func isPortOpen(host: String, port: Int, timeout: TimeAmount = .seconds(3)) throws -> Bool {

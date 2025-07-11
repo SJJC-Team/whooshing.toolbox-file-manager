@@ -6,6 +6,7 @@ import ErrorHandle
 import AsyncAlgorithms
 import Cryptos
 import FluentKit
+import Foundation
 
 /// 表示文件中的字节位置索引。
 ///
@@ -37,7 +38,7 @@ public protocol FileWriter: FileContentHandler {
     /// - Returns: 表示写入结果的异步事件循环结果，成功或带错误信息。
     ///
     /// 该写入操作为原子操作，保证整体执行完成。若出错，则保证整体不执行，原数据不受任何影响
-    func write(at: ByteIndex, bytes: ByteBuffer, method: WriteMethod) -> EventLoopResult<Void, BscError<File.Errcase>>
+    func write(at: ByteIndex, bytes: Data, method: WriteMethod) -> EventLoopResult<Void, BscError<File.Errcase>>
     
     /// 从异步字节流通道在指定位置以给定方式写入数据。
     ///
@@ -51,7 +52,7 @@ public protocol FileWriter: FileContentHandler {
     /// 该写入操作带有 BackPressure 功能，会自动阻塞提供者的数据流，防止内存堆砌
     ///
     /// 该写入操作为原子操作，保证整体执行完成。若出错，则保证整体不执行，原数据不受任何影响
-    func write(at: ByteIndex, from: AsyncThrowingChannel<ByteBuffer, Error>, method: WriteMethod) -> EventLoopResult<Void, BscError<File.Errcase>>
+    func write(at: ByteIndex, from: AsyncThrowingChannel<Data, Error>, method: WriteMethod) -> EventLoopResult<Void, BscError<File.Errcase>>
     
     /// 在指定位置插入字节缓冲区数据。
     ///
@@ -62,7 +63,7 @@ public protocol FileWriter: FileContentHandler {
     /// - Returns: 异步事件循环结果。
     ///
     /// 该写入操作为原子操作，保证整体执行完成。若出错，则保证整体不执行，原数据不受任何影响
-    func insert(at: ByteIndex, bytes: ByteBuffer) -> EventLoopResult<Void, BscError<File.Errcase>>
+    func insert(at: ByteIndex, bytes: Data) -> EventLoopResult<Void, BscError<File.Errcase>>
     
     /// 在指定位置替换字节缓冲区数据。
     ///
@@ -73,7 +74,7 @@ public protocol FileWriter: FileContentHandler {
     /// - Returns: 异步事件循环结果。
     ///
     /// 该写入操作为原子操作，保证整体执行完成。若出错，则保证整体不执行，原数据不受任何影响
-    func replace(at: ByteIndex, bytes: ByteBuffer) -> EventLoopResult<Void, BscError<File.Errcase>>
+    func replace(at: ByteIndex, bytes: Data) -> EventLoopResult<Void, BscError<File.Errcase>>
     
     /// 从异步字节流通道在指定位置插入数据。
     ///
@@ -86,7 +87,7 @@ public protocol FileWriter: FileContentHandler {
     /// 该写入操作带有 BackPressure 功能，会自动阻塞提供者的数据流，防止内存堆砌
     ///
     /// 该写入操作为原子操作，保证整体执行完成。若出错，则保证整体不执行，原数据不受任何影响
-    func insert(at: ByteIndex, from: AsyncThrowingChannel<ByteBuffer, Error>) -> EventLoopResult<Void, BscError<File.Errcase>>
+    func insert(at: ByteIndex, from: AsyncThrowingChannel<Data, Error>) -> EventLoopResult<Void, BscError<File.Errcase>>
     
     /// 从异步字节流通道在指定位置替换数据。
     ///
@@ -97,7 +98,7 @@ public protocol FileWriter: FileContentHandler {
     /// - Returns: 异步事件循环结果。
     ///
     /// 该写入操作为原子操作，保证整体执行完成。若出错，则保证整体不执行，原数据不受任何影响
-    func replace(at: ByteIndex, from: AsyncThrowingChannel<ByteBuffer, Error>) -> EventLoopResult<Void, BscError<File.Errcase>>
+    func replace(at: ByteIndex, from: AsyncThrowingChannel<Data, Error>) -> EventLoopResult<Void, BscError<File.Errcase>>
     
     /// 删除指定范围内的字节。
     /// 
@@ -117,30 +118,30 @@ public protocol FileWriter: FileContentHandler {
 }
 
 public extension FileWriter {
-    func write(at: ByteIndex, bytes: ByteBuffer, method: WriteMethod = .replace) -> EventLoopResult<Void, BscError<File.Errcase>> {
+    func write(at: ByteIndex, bytes: Data, method: WriteMethod = .replace) -> EventLoopResult<Void, BscError<File.Errcase>> {
         switch method {
         case .insert: return insert(at: at, bytes: bytes)
         case .replace: return replace(at: at, bytes: bytes)
         }
     }
     
-    func write(at: ByteIndex, from: AsyncThrowingChannel<ByteBuffer, Error>, method: WriteMethod = .replace) -> EventLoopResult<Void, BscError<File.Errcase>> {
+    func write(at: ByteIndex, from: AsyncThrowingChannel<Data, Error>, method: WriteMethod = .replace) -> EventLoopResult<Void, BscError<File.Errcase>> {
         switch method {
         case .insert: return insert(at: at, from: from)
         case .replace: return replace(at: at, from: from)
         }
     }
     
-    func insert(at: ByteIndex, bytes: ByteBuffer) -> EventLoopResult<Void, BscError<File.Errcase>> {
+    func insert(at: ByteIndex, bytes: Data) -> EventLoopResult<Void, BscError<File.Errcase>> {
         insert(at: at, from: makeChannel(with: bytes))
     }
     
-    func replace(at: ByteIndex, bytes: ByteBuffer) -> EventLoopResult<Void, BscError<File.Errcase>> {
+    func replace(at: ByteIndex, bytes: Data) -> EventLoopResult<Void, BscError<File.Errcase>> {
         replace(at: at, from: makeChannel(with: bytes))
     }
     
-    internal func makeChannel(with bytes: ByteBuffer) -> AsyncThrowingChannel<ByteBuffer, Error> {
-        let res = AsyncThrowingChannel<ByteBuffer, Error>()
+    internal func makeChannel(with bytes: Data) -> AsyncThrowingChannel<Data, Error> {
+        let res = AsyncThrowingChannel<Data, Error>()
         Task {
             await res.send(bytes)
             res.finish()
@@ -173,7 +174,7 @@ extension __FileWriter {
         return handler
     }
     
-    func insert(at index: ByteIndex, from channel: AsyncThrowingChannel<ByteBuffer, Error>) -> EventLoopResult<Void, BscError<File.Errcase>> {
+    func insert(at index: ByteIndex, from channel: AsyncThrowingChannel<Data, Error>) -> EventLoopResult<Void, BscError<File.Errcase>> {
         let insertIndex = index.index(fileSize: fileIndex.size!)
         return storage.db.eventLoop.makeResultWithTask { () throws(BscError<File.Errcase>) in
             try await backPressureInsert(at: insertIndex, from: channel, removeLater: false)
@@ -184,7 +185,7 @@ extension __FileWriter {
         }
     }
     
-    func replace(at index: ByteIndex, from channel: AsyncThrowingChannel<ByteBuffer, Error>) -> EventLoopResult<Void, BscError<File.Errcase>> {
+    func replace(at index: ByteIndex, from channel: AsyncThrowingChannel<Data, Error>) -> EventLoopResult<Void, BscError<File.Errcase>> {
         let insertIndex = index.index(fileSize: fileIndex.size!)
         return storage.db.eventLoop.makeResultWithTask { () throws(BscError<File.Errcase>) in
             let op1 = try await backPressureInsert(at: insertIndex, from: channel, removeLater: true)
@@ -233,7 +234,7 @@ extension __FileWriter {
     /// 该函数会进行数据写入，但不会更新数据库中的指针位置，数据库操作将会作为返回值返回，需要调用者自行执行数据库操作
     func backPressureInsert(
         at byteStartIndex: Int64,
-        from channel: AsyncThrowingChannel<ByteBuffer, Error>,
+        from channel: AsyncThrowingChannel<Data, Error>,
         removeLater: Bool
     ) async throws(BscError<File.Errcase>) -> (
         appendRes: DataAppendingResult,
@@ -700,7 +701,7 @@ extension __FileWriter {
     func appendChannelDataAndEncryptToFile(
         _ fileHandler: WritableFileHandle,
         tagStart: Int,
-        channel: AsyncThrowingChannel<ByteBuffer, Error>
+        channel: AsyncThrowingChannel<Data, Error>
     ) async throws(BscError<FileWriterError>) -> DataAppendingResult {
         // 取得该文件的大小，用于追加数据
         let size = try await required(throws: FileWriterError.appendDataFailed, "获取文件大小信息时失败") {
@@ -720,7 +721,7 @@ extension __FileWriter {
                 try await writer.flush()
                 curTag += 1
                 writtenBytes += Int64(cipher.count)
-                readBytes += Int64(chunk.readableBytes)
+                readBytes += Int64(chunk.count)
             }
         }
         return .init(readBytes, writtenBytes, size, curTag)

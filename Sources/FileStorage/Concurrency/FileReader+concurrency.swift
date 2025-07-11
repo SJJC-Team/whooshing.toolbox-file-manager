@@ -2,22 +2,23 @@ import ErrorHandle
 import NIOCore
 import NIOAdvanced
 import AsyncAlgorithms
+import Foundation
 
 public extension FileReader {
-    func readData(part: ReadPart = .all) async throws(BscError<File.Errcase>) -> ByteBuffer {
+    func readData(part: ReadPart = .all) async throws(BscError<File.Errcase>) -> Data {
         try await self.readData(part: part).get()
     }
     
     func readChunks(
         part: ReadPart = .all,
-        _ callback: @escaping @Sendable (ByteBuffer) async throws -> ()
+        _ callback: @escaping @Sendable (Data) async throws -> ()
     ) async throws(BscError<File.Errcase>) {
         try await self.readChunks(part: part, callback).get()
     }
     
     func readChunks(
         part: ReadPart = .all,
-        _ callback: @escaping @Sendable (ByteBuffer) -> EventLoopResult<Void, Error>
+        _ callback: @escaping @Sendable (Data) -> EventLoopResult<Void, Error>
     ) async throws(BscError<File.Errcase>) {
         try await self.readChunks(part: part, callback).get()
     }

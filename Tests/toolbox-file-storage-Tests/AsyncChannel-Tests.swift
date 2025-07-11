@@ -2,17 +2,18 @@ import Testing
 import ErrorHandle
 import NIOCore
 import AsyncAlgorithms
+import Foundation
 @testable import FileStorage
 
 @Suite("AsyncChannel 测试集")
 struct AsyncChannelTests {
-    @Test("测试流分块")
-    func channelChunkTest() async throws {
+    @Test("测试流分块-ByteBuffer")
+    func channelChunkByteBufferTest() async throws {
         let datas = [
-            randomData(size: 100),
-            randomData(size: 330),
-            randomData(size: 630),
-            randomData(size: 20),
+            randomBuffer(size: 100),
+            randomBuffer(size: 330),
+            randomBuffer(size: 630),
+            randomBuffer(size: 20),
         ]
         
         let totalSize = datas.reduce(0, { $0 + $1.readableBytes })
@@ -41,6 +42,44 @@ struct AsyncChannelTests {
         
         #expect(size == totalSize)
         #expect(totalByte.readableBytes == 0)
+    }
+    
+    @Test("测试流分块-Data")
+    func channelChunkDataTest() async throws {
+        let datas = [
+            randomData(size: 100),
+            randomData(size: 330),
+            randomData(size: 630),
+            randomData(size: 20),
+        ]
+        
+        let totalSize = datas.reduce(0, { $0 + $1.count })
+        
+        var totalByte = datas.reduce(into: Data(), { $0 += $1 })
+        
+        #expect(totalByte.count == totalSize)
+        
+        let chunkSize: Int64 = 50
+        
+        let channel = AsyncThrowingChannel<Data, Error>()
+        
+        Task {
+            for data in datas {
+                await channel.send(data)
+            }
+            channel.finish()
+        }
+        
+        var size = 0
+        for try await chunk in channel.chunkedChannel(chunkSize) {
+            #expect(chunk.count == min(Int(chunkSize), totalSize - size))
+            #expect(totalByte.subdata(in: 0..<chunk.count) == chunk)
+            totalByte = totalByte.subdata(in: chunk.count..<totalByte.count)
+            size += chunk.count
+        }
+        
+        #expect(size == totalSize)
+        #expect(totalByte.count == 0)
     }
     
     @Test("ByteBuffer 深拷贝")

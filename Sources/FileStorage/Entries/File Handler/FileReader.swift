@@ -6,6 +6,7 @@ import ErrorHandle
 import AsyncAlgorithms
 import Cryptos
 import FluentKit
+import Foundation
 
 /// 指定读取文件内容的范围。
 ///
@@ -37,7 +38,7 @@ public protocol FileReader: FileContentHandler {
     /// - Returns: 异步抛出错误的字节缓冲区通道。
     ///
     /// 该写入操作带有 BackPressure 功能，会自动阻塞文件系统的数据流，防止内存堆砌
-    func read(part: ReadPart) -> AsyncThrowingChannel<ByteBuffer, Error>
+    func read(part: ReadPart) -> AsyncThrowingChannel<Data, Error>
     
     /// 读取指定范围的文件内容，返回完整的字节缓冲区。
     ///
@@ -47,7 +48,7 @@ public protocol FileReader: FileContentHandler {
     /// - Warning: 使用这个方法会将文件中要读取的数据全部堆砌至内存中，直到读取完毕后
     /// 才会作为返回值返回，这对于小数据读取是极佳的。但应当避免大文件数据读取，否则容易
     /// 造成内存堆砌
-    func readData(part: ReadPart) -> EventLoopRes<ByteBuffer, File.Errcase>
+    func readData(part: ReadPart) -> EventLoopRes<Data, File.Errcase>
     
     /// 读取指定范围的文件内容，分块回调处理每个字节缓冲区。
     ///
@@ -56,7 +57,7 @@ public protocol FileReader: FileContentHandler {
     ///   - callback: 异步回调，每次读取到的数据块。
     ///   
     /// - Returns: 异步事件循环结果，成功或失败。
-    func readChunks(part: ReadPart, _ callback: @escaping @Sendable (ByteBuffer) -> EventLoopResult<Void, Error>) -> EventLoopRes<Void, File.Errcase>
+    func readChunks(part: ReadPart, _ callback: @escaping @Sendable (Data) -> EventLoopResult<Void, Error>) -> EventLoopRes<Void, File.Errcase>
     
     /// 读取指定范围的文件内容，分块回调处理每个字节缓冲区。
     ///
@@ -65,7 +66,7 @@ public protocol FileReader: FileContentHandler {
     ///   - callback: 异步回调，每次读取到的数据块。
     ///
     /// - Returns: 异步事件循环结果，成功或失败。
-    func readChunks(part: ReadPart, _ callback: @escaping @Sendable (ByteBuffer) async throws -> ()) -> EventLoopRes<Void, File.Errcase>
+    func readChunks(part: ReadPart, _ callback: @escaping @Sendable (Data) async throws -> ()) -> EventLoopRes<Void, File.Errcase>
 }
 
 protocol __FileReader: FileReader, __FileContentHandler {
@@ -81,9 +82,9 @@ extension __FileReader {
         return handler
     }
     
-    func read(part: ReadPart) -> AsyncThrowingChannel<ByteBuffer, Error> {
+    func read(part: ReadPart) -> AsyncThrowingChannel<Data, Error> {
         // 创建读取任务准备进行异步读取
-        let reader = AsyncThrowingChannel<ByteBuffer, Error>()
+        let reader = AsyncThrowingChannel<Data, Error>()
         Task {
             do {
                 try await self.backPressureRead(part: part, reader: reader)
@@ -95,13 +96,13 @@ extension __FileReader {
         return reader
     }
     
-    func readData(part: ReadPart) -> EventLoopRes<ByteBuffer, File.Errcase> {
+    func readData(part: ReadPart) -> EventLoopRes<Data, File.Errcase> {
         let channel = read(part: part)
         
         return storage.db.eventLoop.makeFutureWithTask {
-            var res = ByteBuffer()
-            for try await var chunk in channel {
-                res.writeBuffer(&chunk)
+            var res = Data()
+            for try await chunk in channel.chunkedChannel(fileCrypto.chunkSize) {
+                res += chunk
             }
             return res
         }.withError(File.Errcase.readFileFailed)
@@ -109,12 +110,12 @@ extension __FileReader {
     
     func readChunks(
         part: ReadPart,
-        _ callback: @escaping @Sendable (ByteBuffer) -> EventLoopResult<Void, Error>
+        _ callback: @escaping @Sendable (Data) -> EventLoopResult<Void, Error>
     ) -> EventLoopRes<Void, File.Errcase> {
         let channel = read(part: part)
         
         return storage.db.eventLoop.makeFutureWithTask {
-            for try await chunk in channel {
+            for try await chunk in channel.chunkedChannel(fileCrypto.chunkSize) {
                 try await callback(chunk).get()
             }
         }.withError(File.Errcase.readFileFailed)
@@ -122,7 +123,7 @@ extension __FileReader {
     
     func readChunks(
         part: ReadPart,
-        _ callback: @escaping @Sendable (ByteBuffer) async throws -> ()
+        _ callback: @escaping @Sendable (Data) async throws -> ()
     ) -> EventLoopRes<Void, File.Errcase> {
         let channel = read(part: part)
         
@@ -141,7 +142,7 @@ enum PartIntersectionResult {
 
 extension __FileReader {
     // 带有 back pressure 机制地从加密文件中按指定的块读取数据并解密
-    func backPressureRead(part readPart: ReadPart, reader: AsyncThrowingChannel<ByteBuffer, Error>) async throws(BscError<File.Errcase>) {
+    func backPressureRead(part readPart: ReadPart, reader: AsyncThrowingChannel<Data, Error>) async throws(BscError<File.Errcase>) {
         // 准备读取的范围
         let readRange: Range<Int64>
         
@@ -267,7 +268,7 @@ extension __FileReader {
                         }
                     }
                     
-                    await reader.send(data)
+                    await reader.send(.init(buffer: data))
                     
                     curChunkIndex += 1
                 }

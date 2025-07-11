@@ -116,7 +116,7 @@ struct FileAppendingTests {
             try await reader.readData(part: .range(readRange))
         }
         
-        #expect(data2 == testData.getSlice(at: Int(readRange.lowerBound), length: Int(readRange.upperBound - readRange.lowerBound)))
+        #expect(data2 == testData.subdata(in: Int(readRange.lowerBound)..<Int(readRange.upperBound)))
         
         let zeroParts = try await FilePart.query(on: storage.db)
             .filter(\.$byteStart == \.$byteEnd)
