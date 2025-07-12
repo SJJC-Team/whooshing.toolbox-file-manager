@@ -21,10 +21,7 @@ jobs:
       with_tsan: false
       ios_xcodebuild_action: ''
 
-      only_build: false
-      with_pg_test: true
-      with_pg_database: "postgres"
-      with_pg_user: "postgres"
-      with_pg_password: "password"
-      with_pg_port: "5432"
+      with_pg_configs: |
+        postgres postgres password 5432
+        
     secrets: inherit
