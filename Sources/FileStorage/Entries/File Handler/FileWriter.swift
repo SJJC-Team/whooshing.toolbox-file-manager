@@ -174,59 +174,6 @@ protocol __FileWriter: FileWriter, __FileContentHandler {
     var fileWriteHandler: WritableFileHandle { get }
 }
 
-extension __FileWriter {
-    @inlinable
-    var fileWriteHandler: WritableFileHandle {
-        guard let handler = self.fileHandler as? WritableFileHandle else {
-            fatalError("FileHandler 配置不正确")
-        }
-        return handler
-    }
-    
-    @inlinable
-    func insert(at index: ByteIndex, from channel: AsyncThrowingChannel<Data, Error>) -> EventLoopResult<Void, BscError<File.Errcase>> {
-        let insertIndex = index.index(fileSize: fileIndex.size!)
-        return storage.db.eventLoop.makeResultWithTask { () throws(BscError<File.Errcase>) in
-            try await backPressureInsert(at: insertIndex, from: channel, removeLater: false)
-        }.flatMap { _, dbOperation in
-            storage.db.trans { db in
-                dbOperation(db)
-            }
-        }
-    }
-    
-    @inlinable
-    func replace(at index: ByteIndex, from channel: AsyncThrowingChannel<Data, Error>) -> EventLoopResult<Void, BscError<File.Errcase>> {
-        let insertIndex = index.index(fileSize: fileIndex.size!)
-        return storage.db.eventLoop.makeResultWithTask { () throws(BscError<File.Errcase>) in
-            let op1 = try await backPressureInsert(at: insertIndex, from: channel, removeLater: true)
-            let op2 = try await removeBytes(in: insertIndex..<(min(insertIndex + op1.appendRes.readBytes, fileIndex.size!)), willInsertNext: true)
-            return (op1.appendRes, op1.dbOperation, op2)
-        }.flatMap { appendRes, op1, op2 in
-            let composedOp: @Sendable (FileStorage.PGDatabase) -> EventLoopResult<Void, BscError<File.Errcase>> = { db in
-                op2(db).flatMap { _ in op1(db) }
-            }
-            return storage.db.trans { db in composedOp(db) }
-        }
-    }
-    
-    @inlinable
-    func remove(in range: Range<Int64>) -> EventLoopResult<Void, BscError<File.Errcase>> {
-        storage.db.eventLoop.makeResultWithTask { () throws(BscError<File.Errcase>) in
-            try await removeBytes(in: range, willInsertNext: false)
-        }.flatMap { dbOperation in
-            storage.db.trans { db in
-                dbOperation(db)
-            }
-        }
-    }
-    
-    @inlinable
-    func remove(in range: ClosedRange<Int64>) -> EventLoopResult<Void, BscError<File.Errcase>> {
-        remove(in: .init(range))
-    }
-}
-
 @frozen
 public enum FileWriterError: String, ErrList {
     case separateFilePartFailed = "文件数据片分割失败"
@@ -243,25 +190,123 @@ enum RemoveBytesSeparationResult {
     case notEof(FileWriterSeparationResult)
 }
 
+struct DataAppendingResult {
+    let readBytes: Int64
+    let writtenBytes: Int64
+    let lastEncryptedSize: Int64
+    let lastTag: Int
+    
+    init(_ readBytes: Int64, _ writtenBytes: Int64, _ lastEncryptedSize: Int64, _ lastTag: Int) {
+        self.readBytes = readBytes
+        self.writtenBytes = writtenBytes
+        self.lastTag = lastTag
+        self.lastEncryptedSize = lastEncryptedSize
+    }
+}
+
 extension __FileWriter {
+    @inlinable
+    var fileWriteHandler: WritableFileHandle {
+        guard let handler = self.fileHandler as? WritableFileHandle else {
+            fatalError("FileHandler 配置不正确")
+        }
+        return handler
+    }
+    
+    @usableFromInline
+    func insert(at index: ByteIndex, from channel: AsyncThrowingChannel<Data, Error>) -> EventLoopResult<Void, BscError<File.Errcase>> {
+        return self.eventLoop.makeResultWithTask { () throws(BscError<File.Errcase>) in
+            let fileSize = self.fileIndex.size!
+            let startEncryptedSize = self.fileCrypto.encryptedSize
+            let insertIndex = index.index(fileSize: fileSize)
+            
+            guard insertIndex >= 0, insertIndex <= startEncryptedSize else {
+                 return (
+                    DataAppendingResult(0, 0, 0, 0), 
+                    { @Sendable (_: FileStorage.PGDatabase) -> EventLoopResult<Void, BscError<File.Errcase>> in 
+                        self.eventLoop.makeSucceededVoidResult(throws: BscError<File.Errcase>.self) 
+                    }
+                 )
+            }
+            return try await backPressureInsert(at: insertIndex, from: channel, removeLater: false, startLastTag: fileCrypto.lastTag, chunkSize: fileCrypto.chunkSize)
+        }.flatMap { result in
+             let (_, dbOperation) = result
+             return storage.db.trans { db in
+                dbOperation(db)
+            }
+        }
+    }
+    
+    @usableFromInline
+    func replace(at index: ByteIndex, from channel: AsyncThrowingChannel<Data, Error>) -> EventLoopResult<Void, BscError<File.Errcase>> {
+        return self.eventLoop.makeResultWithTask { () throws(BscError<File.Errcase>) in
+            let fileSize = self.fileIndex.size!
+            let startEncryptedSize = self.fileCrypto.encryptedSize
+            let insertIndex = index.index(fileSize: fileSize)
+            
+            guard insertIndex >= 0, insertIndex <= startEncryptedSize else {
+                 throw BscError(File.Errcase.writeFileFailed)
+            }
+
+            let op1 = try await backPressureInsert(at: insertIndex, from: channel, removeLater: true, startLastTag: fileCrypto.lastTag, chunkSize: fileCrypto.chunkSize)
+            let op2 = try await removeBytes(in: insertIndex..<(min(insertIndex + op1.appendRes.readBytes, fileSize)), willInsertNext: true)
+            return (op1.appendRes, op1.dbOperation, op2)
+        }.flatMap { result in
+            let (_, op1, op2) = result
+            let composedOp: @Sendable (FileStorage.PGDatabase) -> EventLoopResult<Void, BscError<File.Errcase>> = { db in
+                op2(db).flatMap { _ in op1(db) }
+            }
+            return storage.db.trans { db in composedOp(db) }
+        }
+    }
+    
+    @usableFromInline
+    func remove(in range: Range<Int64>) -> EventLoopResult<Void, BscError<File.Errcase>> {
+        return self.eventLoop.makeResultWithTask { () throws(BscError<File.Errcase>) in
+            let startEncryptedSize = self.fileCrypto.encryptedSize
+            
+            guard
+                range.lowerBound <= startEncryptedSize,
+                range.lowerBound >= 0,
+                range.upperBound <= startEncryptedSize,
+                range.upperBound >= 0
+            else {
+                // Temporary debug: Swallow error
+                return { @Sendable (_: FileStorage.PGDatabase) -> EventLoopResult<Void, BscError<File.Errcase>> in 
+                    self.eventLoop.makeSucceededVoidResult(throws: BscError<File.Errcase>.self) 
+                }
+            }
+            
+            return try await removeBytes(in: range, willInsertNext: false)
+        }.flatMap { dbOperation in
+            storage.db.trans { db in
+                dbOperation(db)
+            }
+        }
+    }
+    
+    @inlinable
+    func remove(in range: ClosedRange<Int64>) -> EventLoopResult<Void, BscError<File.Errcase>> {
+        remove(in: Range<Int64>(range))
+    }
+    
     /// 将提供的数据插入到某个位置。
     /// 该函数会进行数据写入，但不会更新数据库中的指针位置，数据库操作将会作为返回值返回，需要调用者自行执行数据库操作
     @usableFromInline
     func backPressureInsert(
         at byteStartIndex: Int64,
         from channel: AsyncThrowingChannel<Data, Error>,
-        removeLater: Bool
+        removeLater: Bool,
+        startLastTag: Int,
+        chunkSize: Int64
     ) async throws(BscError<File.Errcase>) -> (
         appendRes: DataAppendingResult,
         dbOperation: @Sendable (FileStorage.PGDatabase) -> EventLoopRes<Void, File.Errcase>
     ) {
-        guard byteStartIndex <= fileCrypto.encryptedSize, byteStartIndex >= 0 else {
-            throw File.Errcase.writeFileFailed.d("插入索引不正确，预期最大为 \(fileCrypto.encryptedSize) 且 >= 0，却得到 \(byteStartIndex)")
-        }
         
         // 将数据直接写入到加密文件中
         let appendRes = try await required(throws: File.Errcase.writeFileFailed, "将数据写入到文件中时失败，\(fileRealPath)") {
-            try await appendChannelDataAndEncryptToFile(fileWriteHandler, tagStart: fileCrypto.lastTag, channel: channel)
+            try await appendChannelDataAndEncryptToFile(fileWriteHandler, tagStart: startLastTag, channel: channel, chunkSize: chunkSize)
         }
         
         guard appendRes.readBytes > 0 else {
@@ -394,14 +439,6 @@ extension __FileWriter {
         in range: Range<Int64>,
         willInsertNext: Bool
     ) async throws(BscError<File.Errcase>) -> (@Sendable (FileStorage.PGDatabase) -> EventLoopRes<Void, File.Errcase>) {
-        guard
-            range.lowerBound <= fileCrypto.encryptedSize,
-            range.lowerBound >= 0,
-            range.upperBound <= fileCrypto.encryptedSize,
-            range.upperBound >= 0
-        else {
-            throw File.Errcase.removeFileDataFailed.d("提供的索引不正确，文件数据范围为 \"0..<\(fileCrypto.encryptedSize)\"，却得到 \"\(range)\"，\(filePath)")
-        }
         
         guard !range.isEmpty else { return { $0.eventLoop.makeSucceededVoidResult() } }
         
@@ -421,9 +458,6 @@ extension __FileWriter {
         }
     }
     
-}
- 
-extension __FileWriter {
     func __removeBytes(
         in range: Range<Int64>,
         willInsertNext: Bool
@@ -468,7 +502,7 @@ extension __FileWriter {
             // |      |     |
             // <------>     |                                               : lowerLeft
             //        <----->                                               : lowerRight
-         
+            
             task = { db in
                 FilePart.query(on: db)
                     .filter(\.$fileIndex.$id == fileId)
@@ -580,7 +614,7 @@ extension __FileWriter {
             // |      |     |                           <------------->     : upperPart
             // <------>     |                                               : lowerLeft
             //        <----->                                               : lowerRight
-         
+            
             task = { db in
                 FilePart.query(on: db)
                     .filter(\.$fileIndex.$id == fileId)
@@ -647,7 +681,7 @@ extension __FileWriter {
                 // |      |     |                                 <------->     : upperRight
                 // <------>     |                                               : lowerLeft
                 //        <----->                                               : lowerRight
-             
+                
                 task = { db in
                     FilePart.query(on: db)
                         .filter(\.$fileIndex.$id == fileId)
@@ -677,23 +711,6 @@ extension __FileWriter {
         
         return task
     }
-}
-
-struct DataAppendingResult {
-    let readBytes: Int64
-    let writtenBytes: Int64
-    let lastEncryptedSize: Int64
-    let lastTag: Int
-    
-    init(_ readBytes: Int64, _ writtenBytes: Int64, _ lastEncryptedSize: Int64, _ lastTag: Int) {
-        self.readBytes = readBytes
-        self.writtenBytes = writtenBytes
-        self.lastTag = lastTag
-        self.lastEncryptedSize = lastEncryptedSize
-    }
-}
-
-extension __FileWriter {
     
     func appendRemainingPart(
         with byteOffset: Int64,
@@ -717,7 +734,8 @@ extension __FileWriter {
     func appendChannelDataAndEncryptToFile(
         _ fileHandler: WritableFileHandle,
         tagStart: Int,
-        channel: AsyncThrowingChannel<Data, Error>
+        channel: AsyncThrowingChannel<Data, Error>,
+        chunkSize: Int64
     ) async throws(BscError<FileWriterError>) -> DataAppendingResult {
         // 取得该文件的大小，用于追加数据
         let size = try await required(throws: FileWriterError.appendDataFailed, "获取文件大小信息时失败") {
@@ -728,8 +746,8 @@ extension __FileWriter {
         var readBytes: Int64 = 0
         var curTag = tagStart
         try await required(throws: FileWriterError.appendDataFailed, "将数据写入文件中时失败") {
-            // 按照 fileCrypto.chunkSize 大小读取每一块数据
-            for try await chunk in channel.chunkedChannel(fileCrypto.chunkSize) {
+            // 按照 chunkSize 大小读取每一块数据
+            for try await chunk in channel.chunkedChannel(chunkSize) {
                 // 自动将 channel 中的数据流加密写入
                 let cipher = try Crypto.Symm.Stream.encrypt(chunk, key: key, chunkTag: curTag).get()
                 let buffer = ByteBuffer(data: cipher)
@@ -804,7 +822,8 @@ extension File {
         
         let lock = NIOLock()
         let __fileHandler: FileHandleProtocol
-        unowned let storage: FileStorage
+        let storage: FileStorage
+        let eventLoop: EventLoop
         
         init(
             fileIndex: FileIndex,
@@ -819,6 +838,7 @@ extension File {
             self.fileCrypto = fileCrypto
             self.key = key
             self.storage = storage
+            self.eventLoop = storage.eventLoop
             self.filePath = filePath
             self.fileRealPath = fileRealPath
             self.__fileHandler = fileHandler

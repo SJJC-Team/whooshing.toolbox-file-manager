@@ -1,5 +1,5 @@
 {
-  "originHash" : "af4ae3612f5f678f406e12125eca373565686171db535de2938bf817d131af1d",
+  "originHash" : "e5db3c10cd3de75631774523d582968facf79cdc60e088da0100eea49b8b88cd",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -204,8 +204,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-nio.git",
       "state" : {
-        "revision" : "ad6b5f17270a7008f60d35ec5378e6144a575162",
-        "version" : "2.84.0"
+        "revision" : "233f61bc2cfbb22d0edeb2594da27a20d2ce514e",
+        "version" : "2.93.0"
       }
     },
     {
@@ -312,8 +312,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/SJJC-Team/whooshing.toolbox-basic.git",
       "state" : {
-        "revision" : "e11c118d7d8201c626e2e7d687aad154c1ce241e",
-        "version" : "1.4.4"
+        "revision" : "afd6900ec6cc8e65c5b9d3f0f03b286b90b70e7b",
+        "version" : "1.4.6"
       }
     },
     {

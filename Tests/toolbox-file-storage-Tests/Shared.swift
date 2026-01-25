@@ -65,6 +65,13 @@ struct TestingShared {
             filePermission: permission,
             debuging: .init(tdeEncrypt: false)
         ).get()
+        
+        // Clean environment
+        try await s.rootDir.empty(force: true).get()
+        try await FilePart.query(on: s.db).withDeleted().delete()
+        try await FileCrypto.query(on: s.db).withDeleted().delete()
+        try await FileIndex.query(on: s.db).withDeleted().delete()
+        
         self.fileStorage = s
         return s
     }

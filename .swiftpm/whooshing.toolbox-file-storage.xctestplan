@@ -4,12 +4,29 @@
       "id" : "C5AFAAE0-92C5-47A6-9CB5-A0B3026DDFC8",
       "name" : "Test Scheme Action",
       "options" : {
-
+        "addressSanitizer" : {
+          "enabled" : true
+        },
+        "threadSanitizerEnabled" : false
       }
     }
   ],
   "defaultOptions" : {
-
+    "addressSanitizer" : {
+      "enabled" : true
+    },
+    "checkedAllocations" : {
+      "enabled" : true,
+      "requiresHardwareAcceleration" : true
+    },
+    "mallocGuardEdgesEnabled" : true,
+    "mallocScribbleEnabled" : true,
+    "mallocStackLoggingOptions" : {
+      "loggingType" : "liveAllocations"
+    },
+    "nsZombieEnabled" : true,
+    "threadSanitizerEnabled" : true,
+    "undefinedBehaviorSanitizerEnabled" : true
   },
   "testTargets" : [
     {
