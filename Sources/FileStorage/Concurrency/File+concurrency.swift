@@ -7,33 +7,45 @@ public extension File {
     func withReader<T>(
         _ action: @escaping @Sendable (FileReader) async throws -> T
     ) async throws(BscError<Errcase>) -> T where T: Sendable {
-        try await __withReader { reader in
-            storage.eventLoop.makeFutureWithTask {
-                try await action(reader)
-            }.withError(Errcase.openFileFailed)
-        }.get()
+        let reader = try await self.openForRead().get()
+        do {
+            let res = try await action(reader)
+            try await reader.close()
+            return res
+        } catch {
+            try? await reader.close()
+            throw Errcase.openFileFailed.subErr(error)
+        }
     }
     
     @inlinable
     func withWriter<T>(
         _ action: @escaping @Sendable (FileWriter) async throws -> T
     ) async throws(BscError<Errcase>) -> T where T: Sendable {
-        try await __withWriter { writer in
-            storage.eventLoop.makeFutureWithTask {
-                try await action(writer)
-            }.withError(Errcase.openFileFailed)
-        }.get()
+        let writer = try await self.openForWrite().get()
+        do {
+            let res = try await action(writer)
+            try await writer.close()
+            return res
+        } catch {
+            try? await writer.close()
+            throw Errcase.openFileFailed.subErr(error)
+        }
     }
     
     @inlinable
     func withReadWriter<T>(
         _ action: @escaping @Sendable (FileReadWriter) async throws -> T
     ) async throws(BscError<Errcase>) -> T where T: Sendable {
-        try await __withReadWriter { readWriter in
-            storage.eventLoop.makeFutureWithTask {
-                try await action(readWriter)
-            }.withError(Errcase.openFileFailed)
-        }.get()
+        let readWriter = try await self.openForReadAndWrite().get()
+        do {
+            let res = try await action(readWriter)
+            try await readWriter.close()
+            return res
+        } catch {
+            try? await readWriter.close()
+            throw Errcase.openFileFailed.subErr(error)
+        }
     }
 }
 
