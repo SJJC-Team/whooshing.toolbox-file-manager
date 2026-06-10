@@ -9,6 +9,9 @@ import NIOFileSystem
 import NIOAdvanced
 import Crypto
 import DataConvertable
+import AnyCodable
+import Logging
+import LoggingAdvanced
 
 public typealias FileReadWriter = FileReader & FileWriter
 
@@ -228,7 +231,7 @@ public extension File {
     func withReader<T>(
         _ action: @escaping @Sendable (FileReader) async throws -> T
     ) async throws(BscError<Errcase>) -> T where T: Sendable {
-        let reader = try await self.openForRead().get()
+        let reader = try await self.__openForRead()
         do {
             let res = try await action(reader)
             try await reader.close()
@@ -248,7 +251,7 @@ public extension File {
     func withWriter<T>(
         _ action: @escaping @Sendable (FileWriter) async throws -> T
     ) async throws(BscError<Errcase>) -> T where T: Sendable {
-        let writer = try await self.openForWrite().get()
+        let writer = try await self.__openForWrite()
         do {
             let res = try await action(writer)
             try await writer.close()
@@ -268,7 +271,7 @@ public extension File {
     func withReadWriter<T>(
         _ action: @escaping @Sendable (FileReadWriter) async throws -> T
     ) async throws(BscError<Errcase>) -> T where T: Sendable {
-        let readWriter = try await self.openForReadAndWrite().get()
+        let readWriter = try await self.__openForReadAndWrite()
         do {
             let res = try await action(readWriter)
             try await readWriter.close()
@@ -303,21 +306,7 @@ public extension File {
     /// }
     /// ```
     func openForRead() async throws(BscError<Errcase>) -> FileReader {
-        let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
-            try await makeFileHandleParas()
-        }
-        let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
-            try await FileSystem.shared.openFile(forReadingAt: filePath, options: .init())
-        }
-        return Reader(
-            fileIndex: fileIndex,
-            fileCrypto: fileCrypto,
-            key: key,
-            filePath: path,
-            fileRealPath: filePath,
-            fileHandler: fileHandler,
-            storage: storage
-        )
+        try await __openForRead()
     }
     
     /// 打开只写文件句柄。
@@ -342,21 +331,7 @@ public extension File {
     /// }
     /// ```
     func openForWrite() async throws(BscError<Errcase>) -> FileWriter {
-        let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
-            try await makeFileHandleParas()
-        }
-        let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
-            try await FileSystem.shared.openFile(forWritingAt: filePath, options: .modifyFile(createIfNecessary: false))
-        }
-        return Writer(
-            fileIndex: fileIndex,
-            fileCrypto: fileCrypto,
-            key: key,
-            filePath: path,
-            fileRealPath: filePath,
-            fileHandler: fileHandler,
-            storage: storage
-        )
+        try await __openForWrite()
     }
     
     /// 打开读写文件句柄。
@@ -381,10 +356,63 @@ public extension File {
     /// }
     /// ```
     func openForReadAndWrite() async throws(BscError<Errcase>) -> FileReadWriter {
-        let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
+        try await __openForReadAndWrite()
+    }
+}
+
+extension File {
+    @usableFromInline
+    func __openForRead() async throws(BscError<Errcase>) -> FileReader {
+        let logger = storage.getOperationLogger()
+        logger.info("执行 打开文件(只读) 操作", metadata: ["path": .data(path)])
+        let (fileCrypto, key, filePath) = try await logger.required(throws: Errcase.openFileFailed, "获取文件信息失败") {
             try await makeFileHandleParas()
         }
-        let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
+        let fileHandler = try await logger.required(throws: File.Errcase.openFileFailed) {
+            try await FileSystem.shared.openFile(forReadingAt: filePath, options: .init())
+        }
+        return Reader(
+            fileIndex: fileIndex,
+            fileCrypto: fileCrypto,
+            key: key,
+            filePath: path,
+            fileRealPath: filePath,
+            fileHandler: fileHandler,
+            logger: logger.derive(subId: "reader", metadata: ["path": .data(path)]),
+            storage: storage
+        )
+    }
+    
+    @usableFromInline
+    func __openForWrite() async throws(BscError<Errcase>) -> FileWriter {
+        let logger = storage.getOperationLogger()
+        logger.info("执行 打开文件(只写) 操作", metadata: ["path": .data(path)])
+        let (fileCrypto, key, filePath) = try await logger.required(throws: Errcase.openFileFailed, "获取文件信息失败") {
+            try await makeFileHandleParas()
+        }
+        let fileHandler = try await logger.required(throws: File.Errcase.openFileFailed) {
+            try await FileSystem.shared.openFile(forWritingAt: filePath, options: .modifyFile(createIfNecessary: false))
+        }
+        return Writer(
+            fileIndex: fileIndex,
+            fileCrypto: fileCrypto,
+            key: key,
+            filePath: path,
+            fileRealPath: filePath,
+            fileHandler: fileHandler,
+            logger: logger.derive(subId: "writer", metadata: ["path": .data(path)]),
+            storage: storage
+        )
+    }
+    
+    @usableFromInline
+    func __openForReadAndWrite() async throws(BscError<Errcase>) -> FileReadWriter {
+        let logger = storage.getOperationLogger()
+        logger.info("执行 打开文件(读写) 操作", metadata: ["path": .data(path)])
+        let (fileCrypto, key, filePath) = try await logger.required(throws: Errcase.openFileFailed, "获取文件信息失败") {
+            try await makeFileHandleParas()
+        }
+        let fileHandler = try await logger.required(throws: File.Errcase.openFileFailed) {
             try await FileSystem.shared.openFile(forReadingAndWritingAt: filePath, options: .modifyFile(createIfNecessary: false))
         }
         return ReaderAndWriter(
@@ -394,6 +422,7 @@ public extension File {
             filePath: path,
             fileRealPath: filePath,
             fileHandler: fileHandler,
+            logger: logger.derive(subId: "readwriter", metadata: ["path": .data(path)]),
             storage: storage
         )
     }
@@ -413,7 +442,14 @@ public extension File {
     /// 获取文件大小。
     @inlinable
     func getSize() -> EventLoopRes<Int64, FileStorage.Errcase> {
-        storage.eventLoop.makeSucceededResult(size)
+        let logger = storage.getOperationLogger()
+        logger.info("执行 文件获取大小 操作", metadata: ["path": .data(path)])
+        return storage.eventLoop.makeSucceededResult(size)
+            .map
+        { res in
+            logger.info("文件大小查询完成", metadata: ["result": .stringConvertible(res)])
+            return res
+        }.logIfFail(logger: logger)
     }
     
     /// 删除该文件，可选择软删除或硬删除。
@@ -426,38 +462,53 @@ public extension File {
     /// - Warning: 若指定 force，则连同文件数据及文件索引都会一并从硬盘中删除，该操作无法撤销，
     /// 您需要自己承担该风险。
     func delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
+        let logger = storage.getOperationLogger()
+        logger.info("执行 文件删除 操作", metadata: ["path": .data(path), "force": .stringConvertible(force)])
         if force {
+            logger.info("执行文件强删除")
+            
             return storage.db.eventLoop.bridge {
                 try await getRealFilePath(withDeleted: true).0
-            }.withError(Errcase.deleteFileFailed, "获取文件路径失败")
+            }
+            .withError(Errcase.deleteFileFailed, "获取文件路径失败", metadata: ["path": .data(path)])
             .flatMap { filePath in
                 fileIndex.delete(force: true, on: storage.db)
-                    .map { filePath }
-                    .withError(Errcase.deleteFileFailed, "数据库删除记录失败")
+                    .map {
+                        logger.debug("数据库记录删除成功", metadata: ["result": .stringConvertible(filePath)])
+                        return filePath
+                    }
+                    .withError(Errcase.deleteFileFailed, "数据库删除记录失败", metadata: ["path": .data(path)])
             }.flatMap { filePath in
                 storage.db.eventLoop.bridge {
                     try await FileSystem.shared.removeItem(at: filePath)
-                }.withError(Errcase.deleteFileFailed, "从文件系统删除加密文件失败")
-            }
+                }
+                .withError(Errcase.deleteFileFailed, "从文件系统删除加密文件失败", metadata: ["path": .data(path)])
+                .map { logger.debug("加密文件删除成功") }
+            }.logIfFail(logger: logger)
         } else {
+            logger.info("执行文件软删除")
             
             let fileId: UUID
             
             do {
                 fileId = try fileIndex.requireID()
             } catch {
-                return storage.db.eventLoop.makeFailedResult(Errcase.deleteFileFailed.d("获取文件 ID 失败").subErr(error))
+                return storage.db.eventLoop.makeFailedResult(Errcase.deleteFileFailed.d("获取文件 ID 失败").subErr(error)).logIfFail(logger: logger)
             }
             
             return FileCrypto.query(on: storage.db)
                 .filter(\.$id == fileId)
                 .delete(force: false)
-                .withError(Errcase.deleteFileFailed, "数据库 \(FileCrypto.name) 软删除失败")
+                .withError(Errcase.deleteFileFailed, "数据库 \(FileCrypto.name) 软删除失败", metadata: ["path": .data(path)])
+                .map { logger.debug("数据库 \(FileCrypto.name) 软删除完成") }
                 .flatMap
             {
                 fileIndex.delete(force: false, on: storage.db)
-                    .withError(Errcase.deleteFileFailed, "数据库 \(FileIndex.name) 软删除记录失败")
-            }
+                    .withError(Errcase.deleteFileFailed, "数据库 \(FileIndex.name) 软删除记录失败", metadata: ["path": .data(path)])
+                    .map { logger.debug("数据库 \(FileIndex.name) 软删除完成") }
+            }.map {
+                logger.info("文件删除完成")
+            }.logIfFail(logger: logger)
         }
     }
     
@@ -470,16 +521,22 @@ public extension File {
     /// - Returns: 更新后的文件对象。
     @inlinable
     func rename(as name: String) -> EventLoopRes<File, Errcase> {
+        let logger = storage.getOperationLogger()
+        logger.info("执行 文件重命名 操作", metadata: ["path": .data(path), "new_name": .string(name)])
         fileIndex.name = name
         fileIndex.mimeType = name.fileExtension == nil ? .unknow : .init(fileExtension: name.fileExtension!)
         return fileIndex.update(on: storage.indexDatabase)
-            .withError(Errcase.renameFileFailed, "数据库更新失败")
+            .withError(Errcase.renameFileFailed, "数据库更新失败", metadata: ["path": .data(path)])
             .flatMapThrowing
         { () throws(BscError<Errcase>) in
-            try required(throws: Errcase.renameFileFailed, "未知错误") {
+            try required(throws: Errcase.renameFileFailed, "未知错误", metadata: ["path": .data(path)]) {
                 try .init(from: fileIndex, parent: self.path.parent, storage: storage)
             }
-        }
+        }.map { (file: File) in
+            logger.info("文件重命名完成")
+            logger.debug("操作结果", metadata: ["file": .data(file)])
+            return file
+        }.logIfFail(logger: logger)
     }
     
     /// 将目文件动到指定目录下，支持改名。
@@ -492,18 +549,24 @@ public extension File {
     ///
     /// - Returns: 更新后的文件对象。
     func move(to dir: Directory, as name: String? = nil) -> EventLoopRes<File, Errcase> {
+        let logger = storage.getOperationLogger()
+        logger.info("执行 文件移动 操作", metadata: ["path": .data(path), "target_dir": .data(dir.path), "new_name": name != nil ? .string(name!) : "nil"])
         fileIndex.$parent.id = dir.fileIndex.isRoot ? nil : dir.id
         if let name = name {
             fileIndex.name = name
         }
         return fileIndex.update(on: storage.indexDatabase)
-            .withError(Errcase.moveFileFailed, "数据库更新失败")
+            .withError(Errcase.moveFileFailed, "数据库更新失败", metadata: ["path": .data(path)])
             .flatMapThrowing
         { () throws(BscError<Errcase>) in
-            try required(throws: Errcase.moveFileFailed, "未知错误") {
+            try required(throws: Errcase.moveFileFailed, "未知错误", metadata: ["path": .data(path)]) {
                 try .init(from: fileIndex, parent: self.path.parent, storage: storage)
             }
-        }
+        }.map { (file: File) in
+            logger.info("文件移动完成")
+            logger.debug("操作结果", metadata: ["file": .data(file)])
+            return file
+        }.logIfFail(logger: logger)
     }
 }
 
@@ -539,7 +602,7 @@ extension File {
         
         guard
             let fileCrypto = try await qc.first()
-                .withError(FileParaFetchErrcase.databaseFailed)
+                .withError(FileParaFetchErrcase.databaseFailed, metadata: ["path": .data(path)])
                 .get()
         else {
             throw FileParaFetchErrcase.fileNotExist.d(self.path.string)
@@ -559,7 +622,7 @@ extension File {
         let (filePath, fileCrypto) = try await getRealFilePath()
         
         // 创建派生密钥
-        let key = try required(throws: FileParaFetchErrcase.keyDeriveFailed) {
+        let key = try required(throws: FileParaFetchErrcase.keyDeriveFailed, metadata: ["path": .data(path)]) {
             try self.storage.masterKey.derive(salt: fileCrypto.salt, info: fileCrypto.sharedData).get()
         }
         
@@ -567,20 +630,18 @@ extension File {
     }
 }
 
-extension File: CustomStringConvertible {
+extension File: CustomStringConvertible, Loggerable {
     /// 返回文件的简要描述信息。
     @inlinable
     public var description: String {
-        """
-        File (
-            id: \(id.uuidString)
-            name: \(name)
-            mimeType: \(mimeType.rawValue)
-            size: \(size)
-            path: \(path.string)
-            createdAt: \(createdAt)
-            updatedAt: \(updatedAt)
-        )
-        """
+        formatJson([
+            "id": AnyCodable(id),
+            "name": AnyCodable(name),
+            "mime_type": AnyCodable(mimeType.rawValue),
+            "size": AnyCodable(size),
+            "path": AnyCodable(path.string),
+            "created_at": AnyCodable(createdAt),
+            "updated_at": AnyCodable(updatedAt)
+        ])
     }
 }

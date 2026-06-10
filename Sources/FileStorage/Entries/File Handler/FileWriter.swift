@@ -7,15 +7,24 @@ import AsyncAlgorithms
 import Cryptos
 import FluentKit
 import Foundation
+import AnyCodable
+import LoggingAdvanced
 
 /// 表示文件中的字节位置索引。
 ///
 /// - `begin(of:)`：从文件开头开始的偏移量，默认从 0 开始。
 /// - `end(of:)`：从文件结尾开始的偏移量，默认从 0 开始。
 @frozen
-public enum ByteIndex: Sendable {
+public enum ByteIndex: Sendable, CustomStringConvertible, Loggerable {
     case begin(of: Int64 = 0)
     case end(of: Int64 = 0)
+    
+    public var description: String {
+        switch self {
+        case .begin(let of): "begin(of: \(of))"
+        case .end(let of): "end(of: \(of))"
+        }
+    }
 }
 
 /// 文件写入方式。
@@ -23,9 +32,13 @@ public enum ByteIndex: Sendable {
 /// - `insert`：在指定位置插入数据，后续内容顺移。
 /// - `replace`：在指定位置替换数据，覆盖原有内容。
 @frozen
-public enum WriteMethod: Sendable {
+public enum WriteMethod: String, Sendable, CustomStringConvertible, Loggerable  {
     case insert
     case replace
+    
+    public var description: String {
+        self.rawValue
+    }
 }
 
 /// 文件写入操作的协议，继承自 `FileContentHandler`，定义了写入、插入、替换和删除字节的方法。
@@ -170,10 +183,8 @@ extension ByteIndex {
     @inlinable
     internal func index(fileSize: Int64) -> Int64 {
         switch self {
-        case .begin(of: let i):
-            return i
-        case .end(of: let i):
-            return fileSize - i
+        case .begin(of: let i): i
+        case .end(of: let i): fileSize - i
         }
     }
 }
@@ -194,33 +205,48 @@ extension __FileWriter {
     
     @inlinable
     func insert(at index: ByteIndex, from channel: AsyncThrowingChannel<Data, Error>) async throws(File.Errcase.ErrType) {
+        let logger = getHandleLogger()
+        logger.info("执行 流式插入数据 操作", metadata: ["index": .data(index)])
+        
         let insertIndex = index.index(fileSize: fileIndex.size!)
-        let (_, dbOperation) = try await backPressureInsert(at: insertIndex, from: channel, removeLater: false)
+        let (_, dbOperation) = try await backPressureInsert(at: insertIndex, from: channel, removeLater: false, logger: logger)
         
         try await storage.db.atrans { db throws(File.Errcase.ErrType) in
             try await dbOperation(db)
         }
+        
+        logger.info("流式插入数据操作完成")
     }
     
     @inlinable
     func replace(at index: ByteIndex, from channel: AsyncThrowingChannel<Data, Error>) async throws(File.Errcase.ErrType) {
+        let logger = getHandleLogger()
+        logger.info("执行 流式替换数据 操作", metadata: ["index": .data(index)])
+        
         let insertIndex = index.index(fileSize: fileIndex.size!)
         
-        let op1 = try await backPressureInsert(at: insertIndex, from: channel, removeLater: true)
-        let op2 = try await removeBytes(in: insertIndex..<(min(insertIndex + op1.appendRes.readBytes, fileIndex.size!)), willInsertNext: true)
+        let op1 = try await backPressureInsert(at: insertIndex, from: channel, removeLater: true, logger: logger)
+        let op2 = try await removeBytes(in: insertIndex..<(min(insertIndex + op1.appendRes.readBytes, fileIndex.size!)), willInsertNext: true, logger: logger)
         
         try await storage.db.atrans { db throws(File.Errcase.ErrType) in
             try await op2(db)
             try await op1.dbOperation(db)
         }
+        
+        logger.info("流式替换数据操作完成")
     }
     
     @inlinable
     func remove(in range: Range<Int64>) async throws(File.Errcase.ErrType) {
-        let dbOperation = try await removeBytes(in: range, willInsertNext: false)
+        let logger = getHandleLogger()
+        logger.info("执行 删除数据 操作", metadata: ["range": .stringConvertible(range)])
+        
+        let dbOperation = try await removeBytes(in: range, willInsertNext: false, logger: logger)
         try await storage.db.atrans { db throws(File.Errcase.ErrType) in
             try await dbOperation(db)
         }
+        
+        logger.info("删除数据操作完成")
     }
     
     @inlinable
@@ -235,14 +261,48 @@ public enum FileWriterError: String, ErrList {
     case appendDataFailed = "向文件追加数据时失败"
 }
 
-enum FileWriterSeparationResult {
+enum FileWriterSeparationResult: CustomStringConvertible, Loggerable {
     case noNeed(part: FilePart)
     case separated(left: FilePart, right: FilePart)
+    
+    var json: [String: AnyCodable] {
+        switch self {
+        case .noNeed(let part): [
+            "need_separation": AnyCodable("no"),
+            "part": AnyCodable(part.json)
+        ]
+        case .separated(let left, let right): [
+            "need_separation": AnyCodable("yes"),
+            "left_part": AnyCodable(left.json),
+            "right_part": AnyCodable(right.json)
+        ]
+        }
+    }
+    
+    var description: String {
+        formatJson(json)
+    }
 }
 
-enum RemoveBytesSeparationResult {
+enum RemoveBytesSeparationResult: CustomStringConvertible, Loggerable {
     case eof
     case notEof(FileWriterSeparationResult)
+    
+    var json: [String: AnyCodable] {
+        switch self {
+        case .eof: [
+            "at_eof": "no"
+        ]
+        case .notEof(let fileWriterSeparationResult): [
+            "at_eof": "no",
+            "file_writer_sep_result": AnyCodable(fileWriterSeparationResult.json)
+        ]
+        }
+    }
+    
+    var description: String {
+        formatJson(json)
+    }
 }
 
 extension __FileWriter {
@@ -252,21 +312,32 @@ extension __FileWriter {
     func backPressureInsert(
         at byteStartIndex: Int64,
         from channel: AsyncThrowingChannel<Data, Error>,
-        removeLater: Bool
+        removeLater: Bool,
+        logger: Logger
     ) async throws(BscError<File.Errcase>) -> (
         appendRes: DataAppendingResult,
         dbOperation: @Sendable (FileStorage.PGDatabase) async throws(File.Errcase.ErrType) -> Void
     ) {
+        logger.debug("文件索引范围", metadata: [
+            "range": .stringConvertible(0...fileCrypto.encryptedSize)
+        ])
+        
         guard byteStartIndex <= fileCrypto.encryptedSize, byteStartIndex >= 0 else {
-            throw File.Errcase.writeFileFailed.d("插入索引不正确，预期最大为 \(fileCrypto.encryptedSize) 且 >= 0，却得到 \(byteStartIndex)")
+            throw File.Errcase.writeFileFailed.d("插入索引有误").metadata([
+                "range": .stringConvertible(0...fileCrypto.encryptedSize),
+                "index": .stringConvertible(byteStartIndex)
+            ])
         }
         
         // 将数据直接写入到加密文件中
         let appendRes = try await required(throws: File.Errcase.writeFileFailed, "将数据写入到文件中时失败，\(fileRealPath)") {
-            try await appendChannelDataAndEncryptToFile(fileWriteHandler, tagStart: fileCrypto.lastTag, channel: channel)
+            try await appendChannelDataAndEncryptToFile(fileWriteHandler, tagStart: fileCrypto.lastTag, channel: channel, logger: logger)
         }
         
+        logger.debug("将数据写入真实文件完成", metadata: ["result": .data(appendRes)])
+        
         guard appendRes.readBytes > 0 else {
+            logger.info("本次操作未写入任何数据")
             return (appendRes, { _ in })
         }
         
@@ -274,9 +345,11 @@ extension __FileWriter {
             try fileIndex.requireID()
         }
         
+        // 准备进行数据库索引块分割任务
         let separateTask: @Sendable (FileStorage.PGDatabase) async throws -> Void
         
         if byteStartIndex == fileIndex.size! {
+            logger.debug("本次操作为文件内容追加")
             // 追加到文件最后
             // 查询最后一个 filePart 记录，以用于追加
             // 若 last 不存在，则表示该文件是空的
@@ -287,6 +360,8 @@ extension __FileWriter {
                     .sort(\.$byteStart, .descending)
                     .first()
             }
+            
+            logger.debug("文件内容追加，则索引追加", metadata: ["last_part": .data(last)])
             
             // 创建新的 Part 记录，并填入相应的参数
             let newPart = FilePart(
@@ -300,52 +375,69 @@ extension __FileWriter {
                 encryptedEnd: appendRes.lastEncryptedSize + appendRes.writtenBytes
             )
             
+            logger.debug("文件内容追加，则无需任何块分割操作", metadata: ["new_part": .data(newPart)])
+            
             separateTask = { db in
                 try await newPart.save(on: db)
+                logger.debug("文件内容追加索引处理成功")
             }
         } else {
+            logger.debug("本次操作为文件内容插入")
             // 进行数据插入，而非追加
             // 先对影响块进行分割
             let separateResult = try await required(throws: File.Errcase.writeFileFailed, "文件块分割失败，\(filePath)") {
                 try await separateFilePart(from: byteStartIndex)
             }
             
+            logger.debug("切分策略计算完成，准备应用分割", metadata: ["result": .data(separateResult)])
+            
             // 判断分割结果，并应用分割
             let markPart: FilePart
+            // 对不同的分割方案执行不同的任务
             let __task: @Sendable (FileStorage.PGDatabase) async throws -> Void
             
             switch separateResult {
             case .noNeed(part: let part):
+                logger.debug("准备执行 无分割 方案")
                 markPart = part
-                // 无需分割
                 __task = { db in
+                    
                     if removeLater {
-                        return ()
+                        logger.debug("滞后 remove")
+                        return
                     }
                     // 更新该插入点之后的所有数据库记录，使其均向后偏移该插入的字节量
-                    return try await appendRemainingPart(
+                    try await appendRemainingPart(
                         with: appendRes.readBytes,
                         greaterEqualThan: markPart.byteStart,
                         in: db,
-                        fileId: fileId
+                        fileId: fileId,
+                        logger: logger
                     )
+                    
+                    logger.debug("无分割方案执行完成")
                 }
             case .separated(left: let left, right: let right):
+                logger.debug("准备执行 将新割出的插入到数据库中，并更新被割出的原 Part 方案")
                 markPart = right
                 // 需要分割，将新割出的插入到数据库中，并更新被割出的原 Part
                 __task = { db in
                     if removeLater {
-                        return ()
+                        logger.debug("滞后 remove")
+                        return
                     }
                     try await left.save(on: db)
                     try await right.update(on: db)
                     // 更新该插入点之后的所有数据库记录，使其均向后偏移该插入的字节量
-                    return try await appendRemainingPart(
+                    try await appendRemainingPart(
                         with: appendRes.readBytes,
                         greaterEqualThan: markPart.byteStart,
                         in: db,
-                        fileId: fileId
+                        fileId: fileId,
+                        logger: logger
                     )
+                    
+                    logger.debug("分割方案执行完成")
                 }
             }
             
@@ -357,7 +449,7 @@ extension __FileWriter {
             separateTask = { db in
                 try await __task(db)
                 // 插入新的 FilePart 到数据库中
-                try await FilePart(
+                let filePart = FilePart(
                     fileIndexId: fileId,
                     tagStart: fileCrypto.lastTag,
                     byteStart: markPart.byteStart,
@@ -366,7 +458,10 @@ extension __FileWriter {
                     byteTailIgnore: 0,
                     encryptedStart: appendRes.lastEncryptedSize,
                     encryptedEnd: appendRes.lastEncryptedSize + appendRes.writtenBytes
-                ).save(on: db)
+                )
+                try await filePart.save(on: db)
+                
+                logger.debug("新插入数据块索引保存成功", metadata: ["part": .data(filePart)])
             }
         }
         
@@ -380,7 +475,8 @@ extension __FileWriter {
                     fileCrypto.encryptedSize += appendRes.writtenBytes
                     try await fileCrypto.update(on: db)
                     fileIndex.size = fileIndex.size! + appendRes.readBytes
-                    return try await fileIndex.update(on: db)
+                    try await fileIndex.update(on: db)
+                    logger.debug("索引更新成功", metadata: ["crypto": .data(fileCrypto)])
                 }
             }
         )
@@ -391,22 +487,31 @@ extension __FileWriter {
     @usableFromInline
     func removeBytes(
         in range: Range<Int64>,
-        willInsertNext: Bool
+        willInsertNext: Bool,
+        logger: Logger
     ) async throws(BscError<File.Errcase>) -> (@Sendable (FileStorage.PGDatabase) async throws(File.Errcase.ErrType) -> Void) {
+        logger.debug("文件数据范围", metadata: ["range": .stringConvertible(0..<fileCrypto.encryptedSize)])
+        
         guard
             range.lowerBound <= fileCrypto.encryptedSize,
             range.lowerBound >= 0,
             range.upperBound <= fileCrypto.encryptedSize,
             range.upperBound >= 0
         else {
-            throw File.Errcase.removeFileDataFailed.d("提供的索引不正确，文件数据范围为 \"0..<\(fileCrypto.encryptedSize)\"，却得到 \"\(range)\"，\(filePath)")
+            throw File.Errcase.removeFileDataFailed.d("提供的索引大小有误").metadata([
+                "range": .stringConvertible(range),
+                "file_range": .stringConvertible(0..<fileCrypto.encryptedSize)
+            ])
         }
         
-        guard !range.isEmpty else { return { _ in () } }
+        guard !range.isEmpty else {
+            logger.info("要删除的范围大小为 0，未执行任何操作")
+            return { _ in () }
+        }
         
         let removingBytes = range.upperBound - range.lowerBound
         
-        let task = try await __removeBytes(in: range, willInsertNext: willInsertNext)
+        let task = try await __removeBytes(in: range, willInsertNext: willInsertNext, logger: logger)
         
         return { db in
             try await required(throws: File.Errcase.removeFileDataFailed, "数据库操作失败，\(filePath)") {
@@ -415,17 +520,21 @@ extension __FileWriter {
                 fileCrypto.encryptedSize -= removingBytes
                 try await fileCrypto.update(on: db)
                 fileIndex.size! -= range.upperBound - range.lowerBound
-                return try await fileIndex.update(on: db)
+                try await fileIndex.update(on: db)
+                logger.info("数据库索引更新成功-删除操作", metadata: [
+                    "crypto": .data(fileCrypto),
+                    "index": .data(fileIndex)
+                ])
             }
         }
     }
-    
 }
  
 extension __FileWriter {
     func __removeBytes(
         in range: Range<Int64>,
-        willInsertNext: Bool
+        willInsertNext: Bool,
+        logger: Logger
     ) async throws(BscError<File.Errcase>) -> @Sendable (FileStorage.PGDatabase) async throws -> Void {
         let removingBytes = range.upperBound - range.lowerBound
         let (lowerBoundSepResult, upperBoundSepResult) = try await required(throws: File.Errcase.removeFileDataFailed, "文件块分割失败，\(filePath)") {
@@ -437,6 +546,11 @@ extension __FileWriter {
             )
         }
         
+        logger.debug("准备应用分割策略", metadata: [
+            "lower_bound_sep_result": .data(lowerBoundSepResult),
+            "upper_bound_sep_result": .data(upperBoundSepResult)
+        ])
+        
         let task: @Sendable (FileStorage.PGDatabase) async throws -> Void
         
         let fileId = try required(throws: File.Errcase.removeFileDataFailed, "获取文件 ID 失败，\(filePath)") {
@@ -445,6 +559,7 @@ extension __FileWriter {
         
         switch (lowerBoundSepResult, upperBoundSepResult) {
         case (.noNeed(part: let lowerPart), .eof):
+            logger.debug("执行 策略 1")
             
             //              |- - - - - - - - - - - - - - - - - - - - -|     : will remove
             //              v                                         v
@@ -457,9 +572,11 @@ extension __FileWriter {
                     .filter(\.$fileIndex.$id == fileId)
                     .filter(\.$byteStart >= lowerPart.byteStart)
                     .delete()
+                logger.debug("索引更新完成 - 策略 1")
             }
             
         case (.separated(left: let lowerLeft, right: let lowerRight), .eof):
+            logger.debug("执行 策略 2")
             
             //        |- - - - - - - - - - - - - - - - - - - - - - - -|     : will remove
             //        v                                               v
@@ -475,9 +592,11 @@ extension __FileWriter {
                     .delete()
                 try await lowerRight.delete(on: db)
                 try await lowerLeft.save(on: db)
+                logger.debug("索引更新完成 - 策略 2")
             }
             
         case (.noNeed(part: let lowerPart), .notEof(.noNeed(part: let upperPart))):
+            logger.debug("执行 策略 3")
             
             //              |- - - - - - - - - - - - - -|                   : will remove
             //              v                           v
@@ -492,13 +611,18 @@ extension __FileWriter {
                     .filter(\.$byteStart >= lowerPart.byteStart)
                     .filter(\.$byteStart < upperPart.byteStart)
                     .delete()
-                if willInsertNext { return }
+                if willInsertNext {
+                    logger.debug("will_insert_next")
+                    return
+                }
                 try await appendRemainingPart(
                     with: -removingBytes,
                     greaterEqualThan: upperPart.byteStart,
                     in: db,
-                    fileId: fileId
+                    fileId: fileId,
+                    logger: logger
                 )
+                logger.debug("索引更新完成 - 策略 3")
             }
             
         case (.noNeed(part: let lowerPart), .notEof(.separated(left: let upperLeft, right: let upperRight))):
@@ -508,6 +632,7 @@ extension __FileWriter {
             }
             
             if lowerId == upperId {
+                logger.debug("执行 策略 4")
                 
                 //              |- - - -|                                       : will remove
                 //              v       v
@@ -519,16 +644,22 @@ extension __FileWriter {
                 
                 task = { db in
                     try await upperRight.update(on: db)
-                    if willInsertNext { return }
-                    return try await appendRemainingPart(
+                    if willInsertNext {
+                        logger.debug("will_insert_next")
+                        return
+                    }
+                    try await appendRemainingPart(
                         with: -removingBytes,
                         greaterEqualThan: upperRight.byteStart,
                         in: db,
-                        fileId: fileId
+                        fileId: fileId,
+                        logger: logger
                     )
+                    logger.debug("索引更新完成 - 策略 4")
                 }
                 
             } else {
+                logger.debug("执行 策略 5")
                 
                 //              |- - - - - - - - - - - - - - - - -|             : will remove
                 //              v                                 v
@@ -545,17 +676,23 @@ extension __FileWriter {
                         .filter(\.$byteStart < upperLeft.byteStart)
                         .delete()
                     try await upperRight.update(on: db)
-                    if willInsertNext { return }
+                    if willInsertNext {
+                        logger.debug("will_insert_next")
+                        return
+                    }
                     try await appendRemainingPart(
                         with: -removingBytes,
                         greaterEqualThan: upperRight.byteStart,
                         in: db,
-                        fileId: fileId
+                        fileId: fileId,
+                        logger: logger
                     )
+                    logger.debug("索引更新完成 - 策略 5")
                 }
             }
             
         case (.separated(left: let lowerLeft, right: let lowerRight), .notEof(.noNeed(part: let upperPart))):
+            logger.debug("执行 策略 6")
             
             //        |- - - - - - - - - - - - - - - - -|                   : will remove
             //        v                                 v
@@ -573,13 +710,18 @@ extension __FileWriter {
                     .delete()
                 try await lowerRight.delete(on: db)
                 try await lowerLeft.save(on: db)
-                if willInsertNext { return }
+                if willInsertNext {
+                    logger.debug("will_insert_next")
+                    return
+                }
                 try await appendRemainingPart(
                     with: -removingBytes,
                     greaterEqualThan: upperPart.byteStart,
                     in: db,
-                    fileId: fileId
+                    fileId: fileId,
+                    logger: logger
                 )
+                logger.debug("索引更新完成 - 策略 6")
             }
             
         case (.separated(left: let lowerLeft, right: let lowerRight), .notEof(.separated(left: let upperLeft, right: let upperRight))):
@@ -589,6 +731,7 @@ extension __FileWriter {
             }
             
             if lowerId == upperId {
+                logger.debug("执行 策略 7")
                 
                 //                 |- - -|                                      : will remove
                 //                 v     v
@@ -602,16 +745,22 @@ extension __FileWriter {
                 task = { db in
                     try await lowerLeft.save(on: db)
                     try await upperRight.update(on: db)
-                    if willInsertNext { return }
+                    if willInsertNext {
+                        logger.debug("will_insert_next")
+                        return
+                    }
                     try await appendRemainingPart(
                         with: -removingBytes,
                         greaterEqualThan: upperRight.byteStart,
                         in: db,
-                        fileId: fileId
+                        fileId: fileId,
+                        logger: logger
                     )
+                    logger.debug("索引更新完成 - 策略 7")
                 }
                 
             } else {
+                logger.debug("执行 策略 8")
                 
                 //        |- - - - - - - - - - - - - - - - - - - -|             : will remove
                 //        v                                       v
@@ -631,13 +780,18 @@ extension __FileWriter {
                     try await lowerRight.delete(on: db)
                     try await lowerLeft.save(on: db)
                     try await upperRight.update(on: db)
-                    if willInsertNext { return }
+                    if willInsertNext {
+                        logger.debug("will_insert_next")
+                        return
+                    }
                     try await appendRemainingPart(
                         with: -removingBytes,
                         greaterEqualThan: upperRight.byteStart,
                         in: db,
-                        fileId: fileId
+                        fileId: fileId,
+                        logger: logger
                     )
+                    logger.debug("索引更新完成 - 策略 8")
                 }
             }
         }
@@ -646,8 +800,10 @@ extension __FileWriter {
     }
 }
 
-struct DataAppendingResult {
+struct DataAppendingResult: CustomStringConvertible, Loggerable {
+    // 写入的数据字节
     let readBytes: Int64
+    // 写入到真实文件系统的加密数据字节
     let writtenBytes: Int64
     let lastEncryptedSize: Int64
     let lastTag: Int
@@ -658,6 +814,15 @@ struct DataAppendingResult {
         self.lastTag = lastTag
         self.lastEncryptedSize = lastEncryptedSize
     }
+    
+    var description: String {
+        formatJson([
+            "read_bytes": AnyCodable(readBytes),
+            "written_bytes": AnyCodable(writtenBytes),
+            "last_encrypted_size": AnyCodable(lastEncryptedSize),
+            "last_tag": AnyCodable(lastTag)
+        ])
+    }
 }
 
 extension __FileWriter {
@@ -666,39 +831,65 @@ extension __FileWriter {
         with byteOffset: Int64,
         greaterEqualThan bound: Int64,
         in db: FileStorage.PGDatabase,
-        fileId: UUID
+        fileId: UUID,
+        logger: Logger
     ) async throws {
-        _ = try await db.query("""
-            UPDATE "\(FilePart.schema)"
-            SET 
-                "\(FilePart.fields.byteStart.name)" = "\(FilePart.fields.byteStart.name)" + \(byteOffset),
-                "\(FilePart.fields.byteEnd.name)" = "\(FilePart.fields.byteEnd.name)" + \(byteOffset)
-            WHERE
-                "\(FilePart.fields.fileId.name)" = '\(fileId.uuidString)' AND
-                "\(FilePart.fields.byteStart.name)" >= \(bound)
-            """).get()
+        let sql = """
+        UPDATE "\(FilePart.schema)"
+        SET 
+            "\(FilePart.fields.byteStart.name)" = "\(FilePart.fields.byteStart.name)" + \(byteOffset),
+            "\(FilePart.fields.byteEnd.name)" = "\(FilePart.fields.byteEnd.name)" + \(byteOffset)
+        WHERE
+            "\(FilePart.fields.fileId.name)" = '\(fileId.uuidString)' AND
+            "\(FilePart.fields.byteStart.name)" >= \(bound)
+        """
+        
+        logger.debug("偏移后段需受影响字段，偏移 byteOffset 大小", metadata: [
+            "byte_offset": .stringConvertible(byteOffset),
+            "bound": .stringConvertible(bound),
+            "sql": .string(sql)
+        ])
+        
+        _ = try await db.query(sql).get()
+        
+        logger.debug("受影响字段偏移完成")
     }
     
     /// 将 channel 中的数据进行加密并追加到文件 fileHandler 的末尾
     func appendChannelDataAndEncryptToFile(
         _ fileHandler: WritableFileHandle,
         tagStart: Int,
-        channel: AsyncThrowingChannel<Data, Error>
+        channel: AsyncThrowingChannel<Data, Error>,
+        logger: Logger
     ) async throws(BscError<FileWriterError>) -> DataAppendingResult {
         // 取得该文件的大小，用于追加数据
-        let size = try await required(throws: FileWriterError.appendDataFailed, "获取文件大小信息时失败") {
+        let size = try await required(throws: FileWriterError.appendDataFailed, "获取真实文件大小信息时失败") {
             try await fileHandler.info().size
         }
+        logger.debug("取得真实文件大小", metadata: ["size": .stringConvertible(size)])
         var writer = fileHandler.bufferedWriter(startingAtAbsoluteOffset: size)
+        // 写入到真实文件系统的加密数据字节
         var writtenBytes: Int64 = 0
+        // 写入的数据字节
         var readBytes: Int64 = 0
         var curTag = tagStart
-        try await required(throws: FileWriterError.appendDataFailed, "将数据写入文件中时失败") {
+        try await required(throws: FileWriterError.appendDataFailed, "将数据写入真实文件中时失败") {
             // 按照 fileCrypto.chunkSize 大小读取每一块数据
             for try await chunk in channel.chunkedChannel(fileCrypto.chunkSize) {
                 // 自动将 channel 中的数据流加密写入
                 let cipher = try Crypto.Symm.Stream.encrypt(chunk, key: key, chunkTag: curTag).get()
+                logger.debug("完成数据加密", metadata: [
+                    "tag": .stringConvertible(curTag),
+                    "plain_size": .stringConvertible(chunk.count),
+                    "cipher_size": .stringConvertible(cipher.count)
+                ])
                 let buffer = ByteBuffer(data: cipher)
+                logger.debug("已写入数据 tag \(curTag)", metadata: [
+                    "size": .stringConvertible(chunk.count),
+                    "real_size": .stringConvertible(cipher.count),
+                    "written_bytes": .stringConvertible(readBytes),
+                    "written_real_bytes": .stringConvertible(writtenBytes)
+                ])
                 try await writer.write(contentsOf: buffer)
                 try await writer.flush()
                 curTag += 1
@@ -767,6 +958,7 @@ extension File {
         let key: Crypto.Symm.Key
         let filePath: StoragePath
         let fileRealPath: FilePath
+        let logger: Logger
         
         let lock = NIOLock()
         let __fileHandler: FileHandleProtocol
@@ -779,6 +971,7 @@ extension File {
             filePath: StoragePath,
             fileRealPath: FilePath,
             fileHandler: WritableFileHandle,
+            logger: Logger,
             storage: FileStorage
         ) {
             self.fileIndex = fileIndex
@@ -787,6 +980,7 @@ extension File {
             self.storage = storage
             self.filePath = filePath
             self.fileRealPath = fileRealPath
+            self.logger = logger
             self.__fileHandler = fileHandler
         }
     }

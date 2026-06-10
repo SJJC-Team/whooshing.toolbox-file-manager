@@ -1,5 +1,6 @@
 import NIOFileSystem
 import Cryptos
+import Logging
 import NIOConcurrencyHelpers
 
 extension File {
@@ -13,6 +14,7 @@ extension File {
         let key: Crypto.Symm.Key
         let filePath: StoragePath
         let fileRealPath: FilePath
+        let logger: Logger
         
         let lock = NIOLock()
         let __fileHandler: FileHandleProtocol
@@ -25,6 +27,7 @@ extension File {
             filePath: StoragePath,
             fileRealPath: FilePath,
             fileHandler: WritableReadableFileHandle,
+            logger: Logger,
             storage: FileStorage
         ) {
             self.fileIndex = fileIndex
@@ -33,6 +36,7 @@ extension File {
             self.storage = storage
             self.filePath = filePath
             self.fileRealPath = fileRealPath
+            self.logger = logger
             self.__fileHandler = fileHandler
         }
     }

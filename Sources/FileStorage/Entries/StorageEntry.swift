@@ -2,11 +2,12 @@ import Foundation
 import FluentKit
 import NIOAdvanced
 import ErrorHandle
+import LoggingAdvanced
 
 /// 文件存储系统中的通用存储条目协议。
 ///
 /// 表示文件系统中的一个存储条目，可以是文件或目录。另见 `File` 与 `Directory`
-public protocol StorageEntry: Sendable {
+public protocol StorageEntry: Sendable, Loggerable {
     /// 条目名称。
     var name: String { get }
     

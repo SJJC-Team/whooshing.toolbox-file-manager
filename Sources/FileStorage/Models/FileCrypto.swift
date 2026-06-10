@@ -2,6 +2,8 @@ import PgSQL
 import Fluent
 import Foundation
 import DataConvertable
+import AnyCodable
+import LoggingAdvanced
 
 @usableFromInline
 final class FileCrypto: PGModel, @unchecked Sendable {
@@ -60,5 +62,35 @@ extension FileCrypto {
         init(tdeEncrypt: Bool = true) {
             self.tdeEncrypt = tdeEncrypt
         }
+    }
+}
+
+extension FileCrypto: Loggerable, CustomStringConvertible {
+    @inlinable
+    var json: [String: AnyCodable] {[
+        "id": AnyCodable(id),
+        "encrypted_size": AnyCodable(encryptedSize),
+        "last_tag": AnyCodable(lastTag),
+        "chunk_size": AnyCodable(chunkSize),
+        "storage_key": AnyCodable(storageKey),
+        "delete_at": AnyCodable(deleteAt)
+    ]}
+    
+    @usableFromInline
+    var summaryJson: [String: AnyCodable] {[
+        "id": AnyCodable(id),
+        "encrypted_size": AnyCodable(encryptedSize),
+        "last_tag": AnyCodable(lastTag),
+        "chunk_size": AnyCodable(chunkSize)
+    ]}
+    
+    @usableFromInline
+    var description: String {
+        formatJson(json)
+    }
+    
+    @usableFromInline
+    var summaryDescription: String {
+        formatJson(summaryJson)
     }
 }

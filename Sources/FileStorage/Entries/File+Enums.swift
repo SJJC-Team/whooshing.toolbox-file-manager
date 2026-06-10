@@ -72,3 +72,9 @@ public extension File {
         }
     }
 }
+
+extension File.MimeType: CustomStringConvertible {
+    public var description: String {
+        self.rawValue
+    }
+}

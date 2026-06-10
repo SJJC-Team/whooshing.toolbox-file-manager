@@ -6,6 +6,8 @@ import NIO
 import Cryptos
 import NIOFileSystem
 import Foundation
+import Logging
+import LoggingAdvanced
 @testable import FileStorage
 
 enum TestingData {
@@ -31,12 +33,19 @@ struct TestingShared {
     
     @MainActor static var fileStorage: FileStorage? = nil
     @MainActor static var testStage: TestStage = .entryBasics
+    @MainActor static let loggingSystem: Void = {
+        var factory = LoggingFactory()
+        factory.add("Console")
+        factory.bootstrap()
+    }()
     
     @MainActor
     static func getFileStorage() async throws -> FileStorage {
         if let storage = fileStorage {
             return storage
         }
+        
+        _ = loggingSystem
         
         let testingStorageDir = FileSystemTools.resolvePath(append: "~/file_storage_testing")
         
@@ -54,6 +63,9 @@ struct TestingShared {
             try await dir?.close()
         }.value
         
+        var logger = Logger(label: "FileStorage-Testing")
+        logger.logLevel = .debug
+        
         let pool = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
         let eventLoop = pool.next()
         let s = try await FileStorage.new(
@@ -61,7 +73,7 @@ struct TestingShared {
             storagePath: testingStorageDir,
             dbConfigure: .init(hostname: dbHost, port: dbPort, username: "postgres", password: "password", database: "postgres", tls: .disable),
             masterKey: key,
-            logger: .init(label: "FileStorage-Testing"),
+            logger: logger,
             filePermission: permission,
             debuging: .init(tdeEncrypt: false)
         ).get()

@@ -4,6 +4,8 @@ import Cryptos
 import NIOConcurrencyHelpers
 import ErrorHandle
 import NIOCore
+import Logging
+import Foundation
 
 /// 文件内容操作处理协议，表示文件操作时需要实现的基础行为。
 ///
@@ -18,6 +20,13 @@ public protocol FileContentHandler: Sendable {
     func close() async throws(BscError<File.Errcase>)
 }
 
+extension __FileContentHandler {
+    @inlinable
+    func getHandleLogger() -> Logger {
+        self.logger.derive(metadata: ["handle-id": .stringConvertible(UUID())])
+    }
+}
+
 protocol __FileContentHandler: FileContentHandler {
     var fileIndex: FileIndex { get }
     var fileCrypto: FileCrypto { get }
@@ -27,6 +36,7 @@ protocol __FileContentHandler: FileContentHandler {
     var filePath: StoragePath { get }
     var fileRealPath: FilePath { get }
     var fileHandler: FileHandleProtocol { get }
+    var logger: Logger { get }
     var __fileHandler: FileHandleProtocol { get }
 }
 
@@ -46,6 +56,7 @@ extension __FileContentHandler {
     @inlinable
     func close() async throws(BscError<File.Errcase>) {
         do {
+            logger.info("文件操作子关闭成功")
             try await fileHandler.close()
         } catch {
             throw File.Errcase.closeFileFailed.d("\(storage.storagePath)/\(fileCrypto.storageKey).\(storage.fileExtension)").subErr(error)

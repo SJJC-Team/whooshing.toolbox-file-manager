@@ -1,6 +1,8 @@
 import PgSQL
 import Fluent
 import Foundation
+import LoggingAdvanced
+import AnyCodable
 
 @usableFromInline
 final class FileIndex: PGModel, @unchecked Sendable {
@@ -65,5 +67,38 @@ extension FileIndex {
         init(tdeEncrypt: Bool = true) {
             self.tdeEncrypt = tdeEncrypt
         }
+    }
+}
+
+extension FileIndex: Loggerable, CustomStringConvertible {
+    @inlinable
+    var json: [String: AnyCodable] {[
+        "id": AnyCodable(id),
+        "name": AnyCodable(name),
+        "mime_type": AnyCodable(mimeType?.rawValue),
+        "type": AnyCodable(type.rawValue),
+        "size": AnyCodable(size),
+        "created_at": AnyCodable(createdAt),
+        "updated_at": AnyCodable(updatedAt),
+        "delete_at": AnyCodable(deleteAt)
+    ]}
+    
+    @usableFromInline
+    var summaryJson: [String: AnyCodable] {[
+        "id": AnyCodable(id?.shortString ?? "null"),
+        "name": AnyCodable(name),
+        "mime_type": AnyCodable(mimeType?.rawValue),
+        "type": AnyCodable(type.rawValue),
+        "size": AnyCodable(size)
+    ]}
+    
+    @usableFromInline
+    var description: String {
+        formatJson(json)
+    }
+    
+    @usableFromInline
+    var summaryDescription: String {
+        formatJson(summaryJson)
     }
 }

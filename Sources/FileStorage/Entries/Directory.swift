@@ -7,6 +7,9 @@ import AsyncKit
 import ErrorHandle
 import NIOAdvanced
 import NIOFileSystem
+import AnyCodable
+import Logging
+import LoggingAdvanced
 
 /// 表示文件系统中的目录对象，支持异步查询、大小计算、子项列出与递归删除等操作。
 ///
@@ -171,14 +174,17 @@ public extension Directory {
     /// 该操作需要进行迭代遍历子项目大小进行计算，因此较为耗时。
     @inlinable
     func getSize() -> EventLoopRes<Int64, FileStorage.Errcase> {
-        subitems().wrapped
-            .flatMapEach(on: storage.eventLoop) {
-                $0.getSize().wrapped
+        let logger = storage.getOperationLogger()
+        logger.info("执行 目录获取大小 操作", metadata: ["path": .data(path)])
+        return subitems().wrapped
+            .flatMapEach(on: storage.eventLoop) { $0.getSize().wrapped }
+            .withError(Errcase.fetchDirectorySizeFailed, metadata: ["path": .data(path)])
+            .map { $0.reduce(0, +) }
+            .map { res in
+                logger.info("目录查询大小完成", metadata: ["result": .stringConvertible(res)])
+                return res
             }
-            .withError(Errcase.fetchDirectorySizeFailed)
-            .map { sizes in
-                sizes.reduce(0, +)
-            }
+            .logIfFail(logger: logger)
     }
     
     /// 获取当前目录下的所有子项（文件与目录）
@@ -186,7 +192,17 @@ public extension Directory {
     /// - Returns: 第一层子项数组。
     @inlinable
     func subitems() -> EventLoopRes<[any StorageEntry], Errcase> {
-        __subitems(withDeleted: false)
+        let logger = storage.getOperationLogger()
+        logger.info("执行 目录获取子项 操作", metadata: ["path": .data(path)])
+        return __subitems(withDeleted: false)
+            .map
+        { res in
+            logger.info("目录查询子项完成")
+            logger.debug("操作结果", metadata: [
+                "result": .array(res.map { .data($0) })
+            ])
+            return res
+        }.logIfFail(logger: logger)
     }
     
     /// 清空目录内容。
@@ -201,11 +217,16 @@ public extension Directory {
     /// 您需要自己承担该风险。
     @inlinable
     func empty(force: Bool = false) -> EventLoopRes<Void, Errcase> {
-        __subitems(withDeleted: force).wrapped
-            .flatMapEach(on: storage.eventLoop) {
-                $0.delete(force: force).wrapped
-            }
-            .withError(Errcase.emptyDirectoryFailed)
+        let logger = storage.getOperationLogger()
+        logger.info("执行 目录清空 操作", metadata: ["path": .data(path), "force": .stringConvertible(force)])
+        return __subitems(withDeleted: force).wrapped
+            .flatMapEach(on: storage.eventLoop)
+        {
+            $0.delete(force: force).wrapped
+        }
+        .withError(Errcase.emptyDirectoryFailed, metadata: ["path": .data(path)])
+        .map { logger.info("目录清空完成") }
+        .logIfFail(logger: logger)
     }
     
     /// 删除目录，可选择软删除或硬删除。
@@ -220,7 +241,11 @@ public extension Directory {
     /// 您需要自己承担该风险。
     @inlinable
     func delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
-        __delete(force: force)
+        let logger = storage.getOperationLogger()
+        logger.info("执行 目录删除 操作", metadata: ["path": .data(path), "force": .stringConvertible(force)])
+        return __delete(force: force, logger: logger)
+            .map { logger.info("目录删除完成") }
+            .logIfFail(logger: logger)
     }
     
     /// 重命名该目录。
@@ -232,7 +257,15 @@ public extension Directory {
     /// - Returns: 更新后的目录对象。
     @inlinable
     func rename(as name: String) -> EventLoopRes<Directory, Errcase> {
-        __rename(as: name)
+        let logger = storage.getOperationLogger()
+        logger.info("执行 目录重命名 操作", metadata: ["path": .data(path), "new_name": .string(name)])
+        return __rename(as: name)
+            .map
+        { (directory: Directory) in
+            logger.info("目录重命名完成")
+            logger.debug("操作结果", metadata: ["directory": .data(directory)])
+            return directory
+        }.logIfFail(logger: logger)
     }
     
     /// 将目录移动到指定目录下，支持改名。
@@ -246,7 +279,15 @@ public extension Directory {
     /// - Returns: 更新后的目录对象。
     @inlinable
     func move(to dir: Directory, as name: String? = nil) -> EventLoopRes<Directory, Errcase> {
-        __move(to: dir, as: name)
+        let logger = storage.getOperationLogger()
+        logger.info("执行 目录移动 操作", metadata: ["path": .data(path), "target_dir": .data(dir.path), "new_name": name != nil ? .string(name!) : "nil"])
+        return __move(to: dir, as: name)
+            .map
+        { (directory: Directory) in
+            logger.info("目录移动完成")
+            logger.debug("操作结果", metadata: ["directory": .data(directory)])
+            return directory
+        }.logIfFail(logger: logger).logIfFail(logger: logger)
     }
 }
 
@@ -268,17 +309,17 @@ extension Directory {
         }
         
         return r.all()
-            .withError(Errcase.fetchDirectorySubItemFailed, "数据库查询失败")
+            .withError(Errcase.fetchDirectorySubItemFailed, "数据库查询失败", metadata: ["path": .data(path)])
             .flatMapThrowing
         { fileIndex throws(BscError<Errcase>) in
             try fileIndex.map { index throws(BscError<Errcase>) in
                 switch index.type {
                 case .file:
-                    return try required(throws: Errcase.fetchDirectorySubItemFailed, "文件获取失败") {
+                    return try required(throws: Errcase.fetchDirectorySubItemFailed, "文件获取失败", metadata: ["path": .data(path)]) {
                         try File(from: index, parent: self.path, storage: storage)
                     }
                 case .directory:
-                    return try required(throws: Errcase.fetchDirectorySubItemFailed, "目录获取失败") {
+                    return try required(throws: Errcase.fetchDirectorySubItemFailed, "目录获取失败", metadata: ["path": .data(path)]) {
                         try Directory(from: index, parent: self.path, storage: storage)
                     }
                 }
@@ -287,7 +328,7 @@ extension Directory {
     }
     
     @usableFromInline
-    func __delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
+    func __delete(force: Bool = false, logger: Logger) -> EventLoopRes<Void, Errcase> {
         guard
             !self.isRoot,
             let id = self.id
@@ -296,6 +337,8 @@ extension Directory {
         }
         
         if force {
+            logger.info("执行目录强删除")
+            
             let query = """
             SELECT fc."\(FileCrypto.fields.storageKey.name)"
             FROM (
@@ -312,29 +355,32 @@ extension Directory {
             
             // 强制删除，删除数据库文件索引的同时，还需要删除硬盘上的所有关联的真实文件
             return storage.db.query(query)
-                .withError(Errcase.deleteDirectoryFailed, "数据库递归查询子项目失败")
+                .withError(Errcase.deleteDirectoryFailed, "数据库递归查询子项目失败", metadata: ["path": .data(path)])
                 .flatMap
             { fileList in
                 FileIndex.query(on: storage.indexDatabase)
                     .filter(\.$id == id)
                     .delete(force: true)
                     .map { fileList }
-                    .withError(Errcase.deleteDirectoryFailed, "数据库递归删除记录失败")
+                    .withError(Errcase.deleteDirectoryFailed, "数据库递归删除记录失败", metadata: ["path": .data(path)])
             }.flatMap { fileList in
-                storage.db.eventLoop.bridge {
+                logger.debug("数据库记录删除成功", metadata: ["result": .string(String(describing: fileList))])
+                return storage.db.eventLoop.bridge {
                     try await withThrowingTaskGroup(of: Void.self) { group in
                         for row in fileList {
                             group.addTask {
                                 let path = FilePath("\(storage.storagePath)/\(try row.decode(String.self)).\(storage.fileExtension)")
+                                logger.debug("加密目录删除成功", metadata: ["file_path": .stringConvertible(path)])
                                 try await FileSystem.shared.removeItem(at: path)
                             }
                         }
                         try await group.waitForAll()
                     }
-                }.withError(Errcase.deleteDirectoryFailed, "从文件系统删除加密文件失败")
+                }.withError(Errcase.deleteDirectoryFailed, "从文件系统删除加密文件失败", metadata: ["path": .data(path)])
             }
         } else {
             // 软删除，仅递归软删除数据库文件索引
+            logger.info("执行目录强删除")
             
             let query = """
                 WITH RECURSIVE descendants AS (
@@ -351,8 +397,10 @@ extension Directory {
                 .flatMapThrowing { res in
                     try res.map { try $0.decode(String.self) }
                 }
-                .withError(Errcase.deleteDirectoryFailed, "数据库递归检索失败")
+                .withError(Errcase.deleteDirectoryFailed, "数据库递归检索失败", metadata: ["path": .data(path)])
                 .map { ids in
+                    logger.debug("数据库递归检索成功", metadata: ["ids": .array(ids.map { .stringConvertible($0) })])
+                    
                     let formatter = ISO8601DateFormatter()
                     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
@@ -381,16 +429,21 @@ extension Directory {
                     
                     return db.raw(indexQuery)
                         .run()
-                        .withError(Errcase.deleteDirectoryFailed, "数据库 \(FileIndex.name) 递归软删除失败")
-                        .flatMap { _ in
-                            db.raw(cryptoQuery)
-                                .run()
-                                .withError(Errcase.deleteDirectoryFailed, "数据库 \(FileCrypto.name) 递归软删除失败")
-                        }.flatMap { _ in
-                            db.raw(partQuery)
-                                .run()
-                                .withError(Errcase.deleteDirectoryFailed, "数据库 \(FilePart.name) 递归软删除失败")
-                        }
+                        .withError(Errcase.deleteDirectoryFailed, "数据库 \(FileIndex.name) 递归软删除失败", metadata: ["path": .data(path)])
+                        .flatMap
+                    { _ in
+                        logger.debug("数据库 \(FileIndex.name) 递归软删除完成")
+                        return db.raw(cryptoQuery)
+                            .run()
+                            .withError(Errcase.deleteDirectoryFailed, "数据库 \(FileCrypto.name) 递归软删除失败", metadata: ["path": .data(path)])
+                            .map { logger.debug("数据库 \(FileCrypto.name) 递归软删除完成") }
+                    }.flatMap
+                    { _ in
+                        db.raw(partQuery)
+                            .run()
+                            .withError(Errcase.deleteDirectoryFailed, "数据库 \(FilePart.name) 递归软删除失败", metadata: ["path": .data(path)])
+                            .map { logger.debug("数据库 \(FilePart.name) 递归软删除完成") }
+                    }
                 }
             }
         }
@@ -403,10 +456,10 @@ extension Directory {
         }
         fileIndex.name = name
         return fileIndex.update(on: storage.indexDatabase)
-            .withError(Errcase.renameDirectoryFailed, "数据库更新失败")
+            .withError(Errcase.renameDirectoryFailed, "数据库更新失败", metadata: ["path": .data(path)])
             .flatMapThrowing
         { () throws(BscError<Errcase>) in
-            try required(throws: Errcase.renameDirectoryFailed, "未知错误") {
+            try required(throws: Errcase.renameDirectoryFailed, "未知错误", metadata: ["path": .data(path)]) {
                 try .init(from: fileIndex, parent: self.path.isRoot ? nil : self.path.parent, storage: storage)
             }
         }
@@ -430,28 +483,26 @@ extension Directory {
             fileIndex.name = name
         }
         return fileIndex.update(on: storage.indexDatabase)
-            .withError(Errcase.moveDirectoryFailed, "数据库更新失败")
+            .withError(Errcase.moveDirectoryFailed, "数据库更新失败", metadata: ["path": .data(path)])
             .flatMapThrowing
         { () throws(BscError<Errcase>) in
-            try required(throws: Errcase.moveDirectoryFailed, "未知错误") {
+            try required(throws: Errcase.moveDirectoryFailed, "未知错误", metadata: ["path": .data(path)]) {
                 try .init(from: fileIndex, parent: dir.path, storage: storage)
             }
         }
     }
 }
 
-extension Directory: CustomStringConvertible {
+extension Directory: CustomStringConvertible, Loggerable {
     /// 目录的调试描述信息。
     @inlinable
     public var description: String {
-        """
-        Directory (
-            id: \(id?.uuidString ?? "nil")
-            name: \(name)
-            path: \(path.string)
-            createdAt: \(createdAt)
-            updatedAt: \(updatedAt)
-        )
-        """
+        formatJson([
+            "id": AnyCodable(id),
+            "name": AnyCodable(name),
+            "path": AnyCodable(path.string),
+            "created_at": AnyCodable(createdAt),
+            "updated_at": AnyCodable(updatedAt)
+        ])
     }
 }
