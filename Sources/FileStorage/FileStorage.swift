@@ -324,9 +324,17 @@ extension Database {
     
     /// 在 async/await 环境中执行数据库事务。
     @inlinable
-    func trans<T: Sendable>(_ closure: @escaping @Sendable (Self) async throws -> T) async throws -> T {
-        try await self.transaction { db in
-            try await closure(db as! Self)
+    func atrans<T: Sendable, E>(_ closure: @escaping @Sendable (Self) async throws(E) -> T) async throws(E) -> T {
+        do {
+            return try await self.transaction { db throws(E) in
+                do {
+                    return try await closure(db as! Self)
+                } catch {
+                    throw error as! E
+                }
+            }
+        } catch {
+            throw error as! E
         }
     }
 }

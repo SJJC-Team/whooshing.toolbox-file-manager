@@ -321,7 +321,7 @@ extension Directory {
                     .map { fileList }
                     .withError(Errcase.deleteDirectoryFailed, "数据库递归删除记录失败")
             }.flatMap { fileList in
-                storage.db.eventLoop.makeFutureWithTask {
+                storage.db.eventLoop.bridge {
                     try await withThrowingTaskGroup(of: Void.self) { group in
                         for row in fileList {
                             group.addTask {

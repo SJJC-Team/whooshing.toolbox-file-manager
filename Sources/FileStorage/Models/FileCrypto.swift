@@ -17,7 +17,7 @@ final class FileCrypto: PGModel, @unchecked Sendable {
         let lastTag = PGField("last_tag", .int)                     .required
         let chunkSize = PGField("chunk_size", .int64)               .required
         let storageKey = PGField("storage_key", .string)            .required.unique
-        let deleteAt = PGField("delete_at", .string)
+        let deleteAt = PGField("delete_at", .datetime)
         
         @inlinable
         init() {}

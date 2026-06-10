@@ -19,7 +19,7 @@ final class FilePart: PGModel, @unchecked Sendable {
         let byteTailIgnore = PGField("byte_tail_ignore", .int64)    .required
         let encryptedStart = PGField("encrypted_start", .int64)     .required
         let encryptedEnd = PGField("encrypted_end", .int64)         .required
-        let deleteAt = PGField("delete_at", .string)
+        let deleteAt = PGField("delete_at", .datetime)
         
         @inlinable
         init() {}

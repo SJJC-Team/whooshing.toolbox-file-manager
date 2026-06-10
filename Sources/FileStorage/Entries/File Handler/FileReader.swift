@@ -49,7 +49,7 @@ public protocol FileReader: FileContentHandler {
     /// - Warning: 使用这个方法会将文件中要读取的数据全部堆砌至内存中，直到读取完毕后
     /// 才会作为返回值返回，这对于小数据读取是极佳的。但应当避免大文件数据读取，否则容易
     /// 造成内存堆砌
-    func readData(part: ReadPart) -> EventLoopRes<Data, File.Errcase>
+    func readData(part: ReadPart) async throws(File.Errcase.ErrType) -> Data
     
     /// 读取指定范围的文件内容，分块回调处理每个字节缓冲区。
     ///
@@ -58,7 +58,7 @@ public protocol FileReader: FileContentHandler {
     ///   - callback: 异步回调，每次读取到的数据块。
     ///   
     /// - Returns: 异步事件循环结果，成功或失败。
-    func readChunks(part: ReadPart, _ callback: @escaping @Sendable (Data) -> EventLoopResult<Void, Error>) -> EventLoopRes<Void, File.Errcase>
+    func readChunks(part: ReadPart, _ callback: @escaping @Sendable (Data) -> EventLoopResult<Void, Error>) async throws(File.Errcase.ErrType)
     
     /// 读取指定范围的文件内容，分块回调处理每个字节缓冲区。
     ///
@@ -67,6 +67,10 @@ public protocol FileReader: FileContentHandler {
     ///   - callback: 异步回调，每次读取到的数据块。
     ///
     /// - Returns: 异步事件循环结果，成功或失败。
+    func readChunks(part: ReadPart, _ callback: @escaping @Sendable (Data) async throws -> ()) async throws(File.Errcase.ErrType)
+    
+    func readData(part: ReadPart) -> EventLoopRes<Data, File.Errcase>
+    func readChunks(part: ReadPart, _ callback: @escaping @Sendable (Data) -> EventLoopResult<Void, Error>) -> EventLoopRes<Void, File.Errcase>
     func readChunks(part: ReadPart, _ callback: @escaping @Sendable (Data) async throws -> ()) -> EventLoopRes<Void, File.Errcase>
 }
 
@@ -100,44 +104,44 @@ extension __FileReader {
     }
     
     @inlinable
-    func readData(part: ReadPart) -> EventLoopRes<Data, File.Errcase> {
+    func readData(part: ReadPart) async throws(File.Errcase.ErrType) -> Data {
         let channel = read(part: part)
         
-        return storage.db.eventLoop.makeFutureWithTask {
+        return try await required(throws: File.Errcase.readFileFailed){
             var res = Data()
             for try await chunk in channel.chunkedChannel(fileCrypto.chunkSize) {
                 res += chunk
             }
             return res
-        }.withError(File.Errcase.readFileFailed)
+        }
     }
     
     @inlinable
     func readChunks(
         part: ReadPart,
         _ callback: @escaping @Sendable (Data) -> EventLoopResult<Void, Error>
-    ) -> EventLoopRes<Void, File.Errcase> {
+    ) async throws(File.Errcase.ErrType) {
         let channel = read(part: part)
         
-        return storage.db.eventLoop.makeFutureWithTask {
+        try await required(throws: File.Errcase.readFileFailed) {
             for try await chunk in channel.chunkedChannel(fileCrypto.chunkSize) {
                 try await callback(chunk).get()
             }
-        }.withError(File.Errcase.readFileFailed)
+        }
     }
     
     @inlinable
     func readChunks(
         part: ReadPart,
         _ callback: @escaping @Sendable (Data) async throws -> ()
-    ) -> EventLoopRes<Void, File.Errcase> {
+    ) async throws(File.Errcase.ErrType) {
         let channel = read(part: part)
         
-        return storage.db.eventLoop.makeFutureWithTask {
+        try await required(throws: File.Errcase.readFileFailed) {
             for try await chunk in channel {
                 try await callback(chunk)
             }
-        }.withError(File.Errcase.readFileFailed)
+        }
     }
 }
 

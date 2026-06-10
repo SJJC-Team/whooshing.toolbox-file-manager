@@ -225,8 +225,18 @@ public extension File {
     ///     - action: 传入只读句柄，执行自定义动作
     /// - Returns: 本次自定义动作的结果，或抛出错误
     @inlinable
-    func withReader<T, G>(_ action: @escaping @Sendable (FileReader) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
-        __withReader(action)
+    func withReader<T>(
+        _ action: @escaping @Sendable (FileReader) async throws -> T
+    ) async throws(BscError<Errcase>) -> T where T: Sendable {
+        let reader = try await self.openForRead().get()
+        do {
+            let res = try await action(reader)
+            try await reader.close()
+            return res
+        } catch {
+            try? await reader.close()
+            throw Errcase.openFileFailed.subErr(error)
+        }
     }
     
     /// 打开文件并传入只写句柄执行异步操作。
@@ -235,8 +245,18 @@ public extension File {
     ///     - action: 传入只写句柄，执行自定义动作
     /// - Returns: 本次自定义动作的结果，或抛出错误
     @inlinable
-    func withWriter<T, G>(_ action: @escaping @Sendable (FileWriter) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
-        __withWriter(action)
+    func withWriter<T>(
+        _ action: @escaping @Sendable (FileWriter) async throws -> T
+    ) async throws(BscError<Errcase>) -> T where T: Sendable {
+        let writer = try await self.openForWrite().get()
+        do {
+            let res = try await action(writer)
+            try await writer.close()
+            return res
+        } catch {
+            try? await writer.close()
+            throw Errcase.openFileFailed.subErr(error)
+        }
     }
     
     /// 打开文件并传入读写句柄执行异步操作。
@@ -245,8 +265,18 @@ public extension File {
     ///     - action: 传入只写句柄，执行自定义动作
     /// - Returns: 本次自定义动作的结果，或抛出错误
     @inlinable
-    func withReadWriter<T, G>(_ action: @escaping @Sendable (FileReadWriter) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
-        __withReadWriter(action)
+    func withReadWriter<T>(
+        _ action: @escaping @Sendable (FileReadWriter) async throws -> T
+    ) async throws(BscError<Errcase>) -> T where T: Sendable {
+        let readWriter = try await self.openForReadAndWrite().get()
+        do {
+            let res = try await action(readWriter)
+            try await readWriter.close()
+            return res
+        } catch {
+            try? await readWriter.close()
+            throw Errcase.openFileFailed.subErr(error)
+        }
     }
 }
 
@@ -272,9 +302,22 @@ public extension File {
     ///     throw error
     /// }
     /// ```
-    @inlinable
-    func openForRead() async -> Res<FileReader, Errcase> {
-        await __openForRead()
+    func openForRead() async throws(BscError<Errcase>) -> FileReader {
+        let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
+            try await makeFileHandleParas()
+        }
+        let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
+            try await FileSystem.shared.openFile(forReadingAt: filePath, options: .init())
+        }
+        return Reader(
+            fileIndex: fileIndex,
+            fileCrypto: fileCrypto,
+            key: key,
+            filePath: path,
+            fileRealPath: filePath,
+            fileHandler: fileHandler,
+            storage: storage
+        )
     }
     
     /// 打开只写文件句柄。
@@ -298,9 +341,22 @@ public extension File {
     ///     throw error
     /// }
     /// ```
-    @inlinable
-    func openForWrite() async -> Res<FileWriter, Errcase> {
-        await __openForWrite()
+    func openForWrite() async throws(BscError<Errcase>) -> FileWriter {
+        let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
+            try await makeFileHandleParas()
+        }
+        let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
+            try await FileSystem.shared.openFile(forWritingAt: filePath, options: .modifyFile(createIfNecessary: false))
+        }
+        return Writer(
+            fileIndex: fileIndex,
+            fileCrypto: fileCrypto,
+            key: key,
+            filePath: path,
+            fileRealPath: filePath,
+            fileHandler: fileHandler,
+            storage: storage
+        )
     }
     
     /// 打开读写文件句柄。
@@ -324,9 +380,22 @@ public extension File {
     ///     throw error
     /// }
     /// ```
-    @inlinable
-    func openForReadAndWrite() async -> Res<FileReadWriter, Errcase> {
-        await __openForReadAndWrite()
+    func openForReadAndWrite() async throws(BscError<Errcase>) -> FileReadWriter {
+        let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
+            try await makeFileHandleParas()
+        }
+        let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
+            try await FileSystem.shared.openFile(forReadingAndWritingAt: filePath, options: .modifyFile(createIfNecessary: false))
+        }
+        return ReaderAndWriter(
+            fileIndex: fileIndex,
+            fileCrypto: fileCrypto,
+            key: key,
+            filePath: path,
+            fileRealPath: filePath,
+            fileHandler: fileHandler,
+            storage: storage
+        )
     }
 }
 
@@ -356,9 +425,40 @@ public extension File {
     ///
     /// - Warning: 若指定 force，则连同文件数据及文件索引都会一并从硬盘中删除，该操作无法撤销，
     /// 您需要自己承担该风险。
-    @inlinable
     func delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
-        __delete(force: force)
+        if force {
+            return storage.db.eventLoop.bridge {
+                try await getRealFilePath(withDeleted: true).0
+            }.withError(Errcase.deleteFileFailed, "获取文件路径失败")
+            .flatMap { filePath in
+                fileIndex.delete(force: true, on: storage.db)
+                    .map { filePath }
+                    .withError(Errcase.deleteFileFailed, "数据库删除记录失败")
+            }.flatMap { filePath in
+                storage.db.eventLoop.bridge {
+                    try await FileSystem.shared.removeItem(at: filePath)
+                }.withError(Errcase.deleteFileFailed, "从文件系统删除加密文件失败")
+            }
+        } else {
+            
+            let fileId: UUID
+            
+            do {
+                fileId = try fileIndex.requireID()
+            } catch {
+                return storage.db.eventLoop.makeFailedResult(Errcase.deleteFileFailed.d("获取文件 ID 失败").subErr(error))
+            }
+            
+            return FileCrypto.query(on: storage.db)
+                .filter(\.$id == fileId)
+                .delete(force: false)
+                .withError(Errcase.deleteFileFailed, "数据库 \(FileCrypto.name) 软删除失败")
+                .flatMap
+            {
+                fileIndex.delete(force: false, on: storage.db)
+                    .withError(Errcase.deleteFileFailed, "数据库 \(FileIndex.name) 软删除记录失败")
+            }
+        }
     }
     
     /// 重命名该文件。
@@ -408,154 +508,6 @@ public extension File {
 }
 
 // MARK: - 内部实现
-
-extension File {
-    @inlinable
-    func __withReader<T, G>(_ action: @escaping @Sendable (FileReader) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
-        storage.eventLoop.makeFutureWithTask {
-            let reader = try await openForRead().get()
-            do {
-                let res = try await action(reader).get()
-                try await reader.close()
-                return res
-            } catch {
-                try? await reader.close()
-                throw error
-            }
-        }.withError(Errcase.openFileFailed)
-    }
-    
-    /// 打开文件并传入只写句柄执行异步操作。
-    @inlinable
-    func __withWriter<T, G>(_ action: @escaping @Sendable (FileWriter) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
-        storage.eventLoop.makeFutureWithTask {
-            let writer = try await openForWrite().get()
-            do {
-                let res = try await action(writer).get()
-                try await writer.close()
-                return res
-            } catch {
-                try? await writer.close()
-                throw error
-            }
-        }.withError(Errcase.openFileFailed)
-    }
-    
-    /// 打开文件并传入读写句柄执行异步操作。
-    @inlinable
-    func __withReadWriter<T, G>(_ action: @escaping @Sendable (FileReadWriter) -> EventLoopResult<T, G>) -> EventLoopRes<T, Errcase> where T: Sendable {
-        storage.eventLoop.makeFutureWithTask {
-            let readWriter = try await openForReadAndWrite().get()
-            do {
-                let res = try await action(readWriter).get()
-                try await readWriter.close()
-                return res
-            } catch {
-                try? await readWriter.close()
-                throw error
-            }
-        }.withError(Errcase.openFileFailed)
-    }
-    
-    @usableFromInline
-    func __openForRead() async -> Res<FileReader, Errcase> {
-        await .async { () throws(BscError<Errcase>) in
-            let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
-                try await makeFileHandleParas()
-            }
-            let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
-                try await FileSystem.shared.openFile(forReadingAt: filePath, options: .init())
-            }
-            return Reader(
-                fileIndex: fileIndex,
-                fileCrypto: fileCrypto,
-                key: key,
-                filePath: path,
-                fileRealPath: filePath,
-                fileHandler: fileHandler,
-                storage: storage
-            )
-        }
-    }
-    
-    @usableFromInline
-    func __openForWrite() async -> Res<FileWriter, Errcase> {
-        await .async { () throws(BscError<Errcase>) in
-            let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
-                try await makeFileHandleParas()
-            }
-            let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
-                try await FileSystem.shared.openFile(forWritingAt: filePath, options: .modifyFile(createIfNecessary: false))
-            }
-            return Writer(
-                fileIndex: fileIndex,
-                fileCrypto: fileCrypto,
-                key: key,
-                filePath: path,
-                fileRealPath: filePath,
-                fileHandler: fileHandler,
-                storage: storage
-            )
-        }
-    }
-    
-    @usableFromInline
-    func __openForReadAndWrite() async -> Res<FileReadWriter, Errcase> {
-        await .async { () throws(BscError<Errcase>) in
-            let (fileCrypto, key, filePath) = try await required(throws: Errcase.openFileFailed, "获取文件信息失败") {
-                try await makeFileHandleParas()
-            }
-            let fileHandler = try await required(throws: File.Errcase.openFileFailed) {
-                try await FileSystem.shared.openFile(forReadingAndWritingAt: filePath, options: .modifyFile(createIfNecessary: false))
-            }
-            return ReaderAndWriter(
-                fileIndex: fileIndex,
-                fileCrypto: fileCrypto,
-                key: key,
-                filePath: path,
-                fileRealPath: filePath,
-                fileHandler: fileHandler,
-                storage: storage
-            )
-        }
-    }
-    
-    @usableFromInline
-    func __delete(force: Bool = false) -> EventLoopRes<Void, Errcase> {
-        if force {
-            return storage.db.eventLoop.makeFutureWithTask {
-                try await getRealFilePath(withDeleted: true).0
-            }.withError(Errcase.deleteFileFailed, "获取文件路径失败")
-            .flatMap { filePath in
-                fileIndex.delete(force: true, on: storage.db)
-                    .map { filePath }
-                    .withError(Errcase.deleteFileFailed, "数据库删除记录失败")
-            }.flatMap { filePath in
-                storage.db.eventLoop.makeFutureWithTask {
-                    try await FileSystem.shared.removeItem(at: filePath)
-                }.withError(Errcase.deleteFileFailed, "从文件系统删除加密文件失败")
-            }
-        } else {
-            
-            let fileId: UUID
-            
-            do {
-                fileId = try fileIndex.requireID()
-            } catch {
-                return storage.db.eventLoop.makeFailedResult(Errcase.deleteFileFailed.d("获取文件 ID 失败").subErr(error))
-            }
-            
-            return FileCrypto.query(on: storage.db)
-                .filter(\.$id == fileId)
-                .delete(force: false)
-                .withError(Errcase.deleteFileFailed, "数据库 \(FileCrypto.name) 软删除失败")
-                .flatMap {
-                    fileIndex.delete(force: false, on: storage.db)
-                        .withError(Errcase.deleteFileFailed, "数据库 \(FileIndex.name) 软删除记录失败")
-                }
-        }
-    }
-}
 
 extension File {
     

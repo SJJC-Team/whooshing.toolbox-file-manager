@@ -16,9 +16,9 @@ final class FileIndex: PGModel, @unchecked Sendable {
         let parent = PGField("parent_id", .uuid)                                .foreign(FileIndex.self, .id, onDelete: .cascade)
         let type = PGField("type", .string)                                     .required
         let size = PGField("size", .int64)
-        let createdAt = PGField("create_at", .string)                           .required
-        let updateAt = PGField("update_at", .string)                            .required
-        let deleteAt = PGField("delete_at", .string)
+        let createdAt = PGField("create_at", .datetime)                         .required
+        let updatedAt = PGField("update_at", .datetime)                         .required
+        let deleteAt = PGField("delete_at", .datetime)
         
         @inlinable
         init() {}
@@ -34,7 +34,7 @@ final class FileIndex: PGModel, @unchecked Sendable {
     @usableFromInline @Enum(fields.type)                              var type: File.Typed
     @usableFromInline @Field(fields.size)                             var size: Int64?
     @usableFromInline @Timestamp(fields.createdAt, on: .create)       var createdAt: Date!
-    @usableFromInline @Timestamp(fields.updateAt, on: .update)        var updatedAt: Date!
+    @usableFromInline @Timestamp(fields.updatedAt, on: .update)       var updatedAt: Date!
     @usableFromInline @Timestamp(fields.deleteAt, on: .delete)        var deleteAt: Date!
     
     @usableFromInline

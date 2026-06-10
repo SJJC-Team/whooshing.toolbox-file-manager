@@ -9,7 +9,7 @@
     }
   ],
   "defaultOptions" : {
-
+    "nsZombieEnabled" : true
   },
   "testTargets" : [
     {
