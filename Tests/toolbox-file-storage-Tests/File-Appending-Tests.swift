@@ -137,39 +137,77 @@ struct FileAppendingTests {
     }
     
     @Test("写指针非法写入测试", arguments: [
-        (true, 1, 1),
-        (false, -1, -1),
-        (false, 1000000, 10000000),
-        (false, -10000000, -110000000),
-        (false, Int64.min, Int64.min),
-        (false, Int64.max, Int64.max)
+        ("writeIllegalTest/testing1.gzip", 100, -1, 1000),
+        ("writeIllegalTest/testing2.gzip", 1000, 1001, 1000),
+        ("writeIllegalTest/testing3.gzip", 10000, 10001, 1000),
+        ("writeIllegalTest/testing4.gzip", 10000, 20000, 1000)
     ])
-    func writeIllegalTest(makeNew: Bool, begin: Int64, end: Int64) async throws {
+    func writeIllegalTest(path: StoragePath, initSize: Int64, begin: Int64, size: Int64) async throws {
         let storage = try await TestingShared.getFileStorage()
         
-        let path: StoragePath = "shouldFail.gz"
         let chunkSize: Int64 = 300
         
-        let file: File
-        if makeNew {
-            file = try await storage.createFile(at: path, chunkSize: chunkSize)
-        } else {
-            file = try await storage.getFile(at: path)
+        let file = try await storage.createFile(at: path, chunkSize: chunkSize, withIntermediateDirectories: true)
+        
+        try await file.withWriter { writer in
+            try await writer.insert(at: .begin(of: 0), bytes: randomData(size: .init(initSize)))
         }
         
         #expect(file.mimeType == .gzip)
 
         await #expect(throws: BscError<File.Errcase>.self) {
             try await file.withWriter { writer in
-                writer.write(at: .begin(of: -1), bytes: randomData(size: 1000), method: .insert)
+                try await writer.write(at: .begin(of: begin), bytes: randomData(size: .init(size)), method: .insert)
             }.get()
         }
         
-        await #expect(throws: BscError<File.Errcase>.self) {
-            try await file.withWriter { writer in
-                try await writer.write(at: .end(of: -1), bytes: randomData(size: 1000), method: .insert)
+        try await file.withWriter { writer in
+            do {
+                try await writer.write(at: .end(of: begin), bytes: randomData(size: .init(size)), method: .insert)
+                try #require(Bool(false))
+            } catch {
+                let e = error as! BscError<File.Errcase>
+                #expect(e.error == File.Errcase.writeFileFailed)
+                #expect(e.explain == "插入索引有误")
+                print(error)
             }
         }
+        
+        let data = try await file.withReader { reader in
+            try await reader.readData(part: .all)
+        }
+        
+        #expect(data.count == initSize)
+    }
+    
+    @Test("写指针正常写入测试", arguments: [
+        ("writeNormalTest/testing1.gzip", 0, 0, 1000),
+        ("writeNormalTest/testing2.gzip", 1000, 1000, 1000),
+        ("writeNormalTest/testing3.gzip", 10000, 10000, 1000),
+        ("writeNormalTest/testing4.gzip", 10000, 9999, 1000)
+    ])
+    func writeNormalTest(path: StoragePath, initSize: Int64, begin: Int64, size: Int64) async throws {
+        let storage = try await TestingShared.getFileStorage()
+        
+        let chunkSize: Int64 = 300
+        
+        let file = try await storage.createFile(at: path, chunkSize: chunkSize, withIntermediateDirectories: true)
+        
+        try await file.withWriter { writer in
+            try await writer.insert(at: .begin(of: 0), bytes: randomData(size: .init(initSize)))
+        }
+        
+        #expect(file.mimeType == .gzip)
+
+        try await file.withWriter { writer in
+            try await writer.write(at: .begin(of: begin), bytes: randomData(size: .init(size)), method: .insert)
+        }
+        
+        let data = try await file.withReader { reader in
+            try await reader.readData(part: .all)
+        }
+        
+        #expect(data.count == initSize + size)
     }
     
     @Test("文件追加测试", arguments: fileAppend)

@@ -319,12 +319,12 @@ extension __FileWriter {
         dbOperation: @Sendable (FileStorage.PGDatabase) async throws(File.Errcase.ErrType) -> Void
     ) {
         logger.debug("文件索引范围", metadata: [
-            "range": .stringConvertible(0...fileCrypto.encryptedSize)
+            "range": .stringConvertible(0...fileIndex.size!)
         ])
         
-        guard byteStartIndex <= fileCrypto.encryptedSize, byteStartIndex >= 0 else {
+        guard byteStartIndex <= fileIndex.size!, byteStartIndex >= 0 else {
             throw File.Errcase.writeFileFailed.d("插入索引有误").metadata([
-                "range": .stringConvertible(0...fileCrypto.encryptedSize),
+                "range": .stringConvertible(0...fileIndex.size!),
                 "index": .stringConvertible(byteStartIndex)
             ])
         }
@@ -490,17 +490,17 @@ extension __FileWriter {
         willInsertNext: Bool,
         logger: Logger
     ) async throws(BscError<File.Errcase>) -> (@Sendable (FileStorage.PGDatabase) async throws(File.Errcase.ErrType) -> Void) {
-        logger.debug("文件数据范围", metadata: ["range": .stringConvertible(0..<fileCrypto.encryptedSize)])
+        logger.debug("文件数据范围", metadata: ["range": .stringConvertible(0..<fileIndex.size!)])
         
         guard
-            range.lowerBound <= fileCrypto.encryptedSize,
+            range.lowerBound <= fileIndex.size!,
             range.lowerBound >= 0,
-            range.upperBound <= fileCrypto.encryptedSize,
+            range.upperBound <= fileIndex.size!,
             range.upperBound >= 0
         else {
             throw File.Errcase.removeFileDataFailed.d("提供的索引大小有误").metadata([
                 "range": .stringConvertible(range),
-                "file_range": .stringConvertible(0..<fileCrypto.encryptedSize)
+                "file_range": .stringConvertible(0..<fileIndex.size!)
             ])
         }
         
