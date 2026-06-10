@@ -3,6 +3,7 @@ import ErrorHandle
 import Cryptos
 import Foundation
 import NIOAdvanced
+import LoggingAdvanced
 
 /// 提供文件加密存储，支持流式解密 Backpressure 读取以及加密写入。
 ///
@@ -225,18 +226,38 @@ public final class FileStorage: @unchecked Sendable {
         filePermission: UnixPermission?,
         debuging: Debuging? = nil
     ) async throws(BscError<Errcase>) {
-        
         let storagePath = FileSystemTools.resolvePath(append: storagePath)
         
-        let fileAttributes = try required(throws: Errcase.fileSystemInitFailed, "文件信息参数读取失败") {
+        self.eventLoop = eventLoop
+        self.storagePath = storagePath
+        self.masterKey = masterKey
+        self.logger = logger
+        self.filePermission = filePermission
+        self.fileExtension = fileExtension
+        let initLogger = logger.derive(subId: "sysinit", metadata: ["eventLoop": .id(eventLoop)])
+        
+        initLogger.info("正在初始化加密文件存储系统", metadata: [
+            "path": .string(storagePath),
+            "db_config": .summaryData(dbConfigure),
+            "file_extension": .string(fileExtension),
+            "file_permission": .summaryData(filePermission)
+        ])
+        initLogger.debug("初始化参数", metadata: [
+            "db_config": .data(dbConfigure),
+            "file_permission": .data(filePermission)
+        ])
+        
+        initLogger.info("正在准备文件存储区")
+        
+        let fileAttributes = try initLogger.required(throws: Errcase.fileSystemInitFailed, "文件存储区属性读取失败", metadata: ["path": .string(storagePath)]) {
             try FileManager.default.attributesOfItem(atPath: storagePath)
         }
         
-        let permissionAttributes = try required(throws: Errcase.fileSystemInitFailed, "提供的权限信息无效") {
+        let permissionAttributes = try initLogger.required(throws: Errcase.fileSystemInitFailed, "提供的文件权限值无效", metadata: ["file_permission": .data(filePermission)]) {
             try filePermission?.attributes.get()
         } ?? [:]
         
-        try required(throws: Errcase.fileSystemInitFailed, "修改主存储目录权限失败") {
+        try initLogger.required(throws: Errcase.fileSystemInitFailed, "修改主存储目录权限失败", metadata: ["path": .string(storagePath), "file_permission": .data(filePermission)]) {
             try FileManager.default.setAttributes(permissionAttributes, ofItemAtPath: storagePath)
         }
         
@@ -246,16 +267,13 @@ public final class FileStorage: @unchecked Sendable {
             let type = fileAttributes[.type] as? FileAttributeType,
             type == .typeDirectory
         else {
-            throw Errcase.fileSystemInitFailed.d("根目录参数读取失败")
+            throw initLogger.errThrow(Errcase.fileSystemInitFailed.d("文件存储区属性获取失败").metadata(["path": .string(storagePath)]))
         }
         
-        self.eventLoop = eventLoop
-        self.storagePath = storagePath
-        self.masterKey = masterKey
-        self.logger = logger
+        initLogger.info("文件存储区准备完成")
+        initLogger.info("正在准备数据库")
+        
         self.dbs = Databases(threadPool: .singleton, on: eventLoop)
-        self.filePermission = filePermission
-        self.fileExtension = fileExtension
         
         do {
             self.dbs.use(.postgres(configuration: dbConfigure), as: .psql)
@@ -273,6 +291,7 @@ public final class FileStorage: @unchecked Sendable {
             )
             try await mig.setupIfNeeded().get()
             try await mig.prepareBatch().get()
+            initLogger.info("数据库准备成功")
         } catch {
             await self.dbs.shutdownAsync()
             try? await eventLoop.shutdownGracefully()
@@ -302,6 +321,13 @@ public final class FileStorage: @unchecked Sendable {
         self.rootDirIndex = index
         
         self.__rootDir = try .init(from: rootDirIndex, parent: nil, storage: self)
+        
+        initLogger.info("加密文件存储系统初始化完成")
+    }
+    
+    @inlinable
+    func getOperationLogger() -> Logger {
+        self.logger.derive(metadata: ["op-id": .stringConvertible(UUID())])
     }
 }
 

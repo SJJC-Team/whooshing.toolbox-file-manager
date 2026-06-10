@@ -1,6 +1,15 @@
 {
-  "originHash" : "bec0dbd7869455d44e23af4e9e446c0c8c4c10c61af026d5d5266dfeb3335cda",
+  "originHash" : "514b3928b31adfda9dd2d162eb6f441cd0eb91a723325e221e70a4b85a7cc09c",
   "pins" : [
+    {
+      "identity" : "anycodable",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Flight-School/AnyCodable",
+      "state" : {
+        "revision" : "862808b2070cd908cb04f9aafe7de83d35f81b05",
+        "version" : "0.6.7"
+      }
+    },
     {
       "identity" : "async-http-client",
       "kind" : "remoteSourceControl",
@@ -323,24 +332,6 @@
       "state" : {
         "revision" : "3732d7c6f4c212d0dca72d7eea41602b48a4cc13",
         "version" : "1.1.1"
-      }
-    },
-    {
-      "identity" : "whooshing.toolbox-basic",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/whooshing-workshop/whooshing.toolbox-basic.git",
-      "state" : {
-        "revision" : "fb38160dc150d3663d3e62d525f6d8a792ac1142",
-        "version" : "1.5.3"
-      }
-    },
-    {
-      "identity" : "whooshing.toolbox-pgsql",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/whooshing-workshop/whooshing.toolbox-pgsql.git",
-      "state" : {
-        "revision" : "10a033c361ab5a3a42707690c3bab18bd81d9d2c",
-        "version" : "1.0.7"
       }
     }
   ],

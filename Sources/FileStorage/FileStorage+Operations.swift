@@ -7,6 +7,8 @@ import ErrorHandle
 import NIOCore
 import NIOAdvanced
 import NIOFileSystem
+import Logging
+import LoggingAdvanced
 
 public extension FileStorage {
     /// FileStorage 所有可能抛出的错误类型枚举，按功能划分为数据库错误、目录操作错误、文件操作错误。
@@ -55,26 +57,36 @@ public extension FileStorage {
         withIntermediateDirectories createIfNeed: Bool = false,
         slience: Bool = false
     ) -> EventLoopRes<Directory, Errcase> {
+        let logger = getOperationLogger()
+        
+        logger.info("执行 目录创建 操作", metadata: [
+            "path": .data(path),
+            "with_intermediate_directories": .stringConvertible(createIfNeed),
+            "slience": .stringConvertible(slience)
+        ])
+        
         guard !path.isRoot else { preconditionFailure("不允许创建系统根") }
         
         return getParent(at: path, withIntermediateDirectories: createIfNeed)
-            .errCast(Errcase.createDirectoryFailed, "获取父目录 \"\(path.parent)\" 失败")
+            .errCast(Errcase.createDirectoryFailed, "获取父目录失败", metadata: ["super_path": .data(path.parent)])
             .flatMap
         { parent in
-            // 检查要创建的目录是否已经存在
-            self.getChild(at: parent, name: path.last!)
-                .errCast(Errcase.createDirectoryFailed, "未知错误")
+            logger.debug("检查要创建的目录是否已经存在")
+            
+            return self.getChild(at: parent, name: path.last!)
+                .errCast(Errcase.createDirectoryFailed, "获取目录下的子内容失败")
                 .flatMap
             { fileIndex in
                 if let existedIndex = fileIndex, existedIndex.type == .directory {
                     // 要创建的目录已经存在，若指定 slience 则不做任何事，否则抛出错误
+                    logger.debug("要创建的目录已存在")
                     if slience {
                         return self.eventLoop.makeSucceededResult(existedIndex)
                     } else {
                         return self.eventLoop.makeFailedResult(Errcase.createDirectoryFailed.d("目录 \"\(path)\" 已存在"))
                     }
                 } else {
-                    // 要创建的目录不存在，创建新目录
+                    logger.debug("要创建的目录不存在")
                     return self.newDirIndex(parent: parent, path: path).errCast(Errcase.createDirectoryFailed, "创建目录 \"\(path)\" 失败")
                 }
             }
@@ -82,7 +94,7 @@ public extension FileStorage {
             try required(throws: Errcase.getDirectoryFailed, path.string) {
                 try .init(from: fileIndex, parent: path.parent, storage: self)
             }
-        }
+        }.logIfFail(logger: logger)
     }
     
     /// 获取指定路径的目录对象。
