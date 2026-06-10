@@ -1,5 +1,5 @@
 {
-  "originHash" : "f7f93c80cfe64b804f26a3da892a20f6d573de583c0e313ac5a9b12570a44094",
+  "originHash" : "9064c79b1344c73d680ac2222f7e359674b0579a64c740d1232b450063b80fac",
   "pins" : [
     {
       "identity" : "anycodable",
@@ -348,8 +348,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/whooshing-workshop/whooshing.toolbox-pgsql.git",
       "state" : {
-        "revision" : "4059dd184ef97419d3702d94a617725f36c4cb37",
-        "version" : "1.0.8"
+        "revision" : "7028a3bb0b766d91e42cf41e6843d19e4874b08a",
+        "version" : "1.0.9"
       }
     }
   ],
