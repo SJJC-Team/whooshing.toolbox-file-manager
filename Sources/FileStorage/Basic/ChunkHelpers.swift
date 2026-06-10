@@ -4,6 +4,8 @@ import Foundation
 import ErrorHandle
 import Cryptos
 import NIOAdvanced
+import AnyCodable
+import LoggingAdvanced
 
 enum ChunkHelpers {
     @frozen
@@ -23,16 +25,24 @@ enum ChunkHelpers {
 extension ChunkHelpers {
     /// 用于记录数据落点分析的结果
     @usableFromInline
-    struct IntersectionResult: Equatable, CustomStringConvertible {
+    struct IntersectionResult: Equatable, CustomStringConvertible, Loggerable {
         @usableFromInline let rangeOffset: Int64
         @usableFromInline let rangeInIntersection: Bool
         @usableFromInline let chunkIndex: Int
         @usableFromInline let chunkBegin: Int64
         @usableFromInline let chunks: BufferSpace
         
+        var json: [String: AnyCodable] {[
+            "range_offset": AnyCodable(rangeOffset),
+            "range_in_intersection": AnyCodable(rangeInIntersection),
+            "chunk_index": AnyCodable(chunkIndex),
+            "chunk_begin": AnyCodable(chunkBegin),
+            "chunks": AnyCodable(chunks.map { String($0) })
+        ]}
+        
         @inlinable
         var description: String {
-            "(rangeOffset: \(rangeOffset), rangeInIntersection: \(rangeInIntersection), chunkIndex: \(chunkIndex), chunkBegin: \(chunkBegin), chunks: [\(chunks.map { String($0) }.joined(separator: ", "))])"
+            formatJson(json)
         }
     }
     

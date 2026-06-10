@@ -8,13 +8,15 @@ import Cryptos
 import FluentKit
 import Foundation
 import SQLKit
+import Logging
+import LoggingAdvanced
 
 /// 指定读取文件内容的范围。
 ///
 /// - `all`：读取整个文件内容。
 /// - `range`：读取指定的开区间范围 `[lowerBound, upperBound)` 的字节。
 /// - `closedRange`：读取指定的闭区间范围 `[lowerBound...upperBound]` 的字节。
-public enum ReadPart: Sendable, CustomStringConvertible {
+public enum ReadPart: Sendable, CustomStringConvertible, Loggerable {
     /// 读取整个文件内容。
     case all
     /// 读取指定的开区间范围 `[lowerBound, upperBound)` 的字节。
@@ -24,9 +26,9 @@ public enum ReadPart: Sendable, CustomStringConvertible {
     
     public var description: String {
         switch self {
-        case .all: return "\(String(describing: Self.self)).all"
-        case .range(let range): return "\(String(describing: Self.self)).range(\(range))"
-        case .closedRange(let range): return "\(String(describing: Self.self)).closedRange(\(range))"
+        case .all: return "all"
+        case .range(let range): return "range(\(range))"
+        case .closedRange(let range): return "closedRange(\(range))"
         }
     }
 }
@@ -90,14 +92,18 @@ extension __FileReader {
     
     @inlinable
     func read(part: ReadPart) -> AsyncThrowingChannel<Data, Error> {
+        let logger = getHandleLogger()
+        logger.info("执行 流式读取文件数据 操作", metadata: ["part": .data(part)])
+        
         // 创建读取任务准备进行异步读取
         let reader = AsyncThrowingChannel<Data, Error>()
         Task {
             do {
-                try await self.backPressureRead(part: part, reader: reader)
+                try await self.backPressureRead(part: part, reader: reader, logger: logger)
+                logger.info("流式读取文件数据操作完成")
                 reader.finish()
             } catch {
-                reader.fail(error)
+                reader.fail(logger.error(error))
             }
         }
         return reader
@@ -105,13 +111,16 @@ extension __FileReader {
     
     @inlinable
     func readData(part: ReadPart) async throws(File.Errcase.ErrType) -> Data {
+        logger.info("执行 单次读取文件数据 操作", metadata: ["part": .data(part)])
+        
         let channel = read(part: part)
         
-        return try await required(throws: File.Errcase.readFileFailed){
+        return try await logger.required(throws: File.Errcase.readFileFailed){
             var res = Data()
             for try await chunk in channel.chunkedChannel(fileCrypto.chunkSize) {
                 res += chunk
             }
+            logger.info("单次读取文件数据操作完成", metadata: ["data_length": .stringConvertible(res.count)])
             return res
         }
     }
@@ -121,13 +130,17 @@ extension __FileReader {
         part: ReadPart,
         _ callback: @escaping @Sendable (Data) -> EventLoopResult<Void, Error>
     ) async throws(File.Errcase.ErrType) {
+        logger.info("执行 流式读取文件数据 操作", metadata: ["part": .data(part)])
+        
         let channel = read(part: part)
         
-        try await required(throws: File.Errcase.readFileFailed) {
+        try await logger.required(throws: File.Errcase.readFileFailed) {
             for try await chunk in channel.chunkedChannel(fileCrypto.chunkSize) {
                 try await callback(chunk).get()
             }
         }
+        
+        logger.info("流式读取文件数据操作完成")
     }
     
     @inlinable
@@ -135,25 +148,40 @@ extension __FileReader {
         part: ReadPart,
         _ callback: @escaping @Sendable (Data) async throws -> ()
     ) async throws(File.Errcase.ErrType) {
+        logger.info("执行 流式读取文件数据 操作", metadata: ["part": .data(part)])
+        
         let channel = read(part: part)
         
-        try await required(throws: File.Errcase.readFileFailed) {
+        try await logger.required(throws: File.Errcase.readFileFailed) {
             for try await chunk in channel {
                 try await callback(chunk)
             }
         }
+        
+        logger.info("流式读取文件数据操作完成")
     }
 }
 
-enum PartIntersectionResult {
+enum PartIntersectionResult: Loggerable, CustomStringConvertible {
     case all
     case intersection(ChunkHelpers.IntersectionResult)
+    
+    var description: String {
+        switch self {
+        case .all: "all"
+        case .intersection(let intersectionResult): intersectionResult.description
+        }
+    }
 }
 
 extension __FileReader {
     // 带有 back pressure 机制地从加密文件中按指定的块读取数据并解密
     @usableFromInline
-    func backPressureRead(part readPart: ReadPart, reader: AsyncThrowingChannel<Data, Error>) async throws(BscError<File.Errcase>) {
+    func backPressureRead(
+        part readPart: ReadPart,
+        reader: AsyncThrowingChannel<Data, Error>,
+        logger: Logger
+    ) async throws(BscError<File.Errcase>) {
         // 准备读取的范围
         let readRange: Range<Int64>
         
@@ -170,6 +198,8 @@ extension __FileReader {
             try fileIndex.requireID()
         }
         
+        logger.debug("成功取得文件 ID", metadata: ["id": .stringConvertible(fileId)])
+        
         let fileParts = try await required(throws: File.Errcase.readFileFailed, "数据库查询文件数据块时失败，\(filePath)") {
             try await FilePart.query(on: storage.db)
                 .filter(\.$fileIndex.$id == fileId)
@@ -181,6 +211,8 @@ extension __FileReader {
                 .get()
         }
         
+        logger.debug("成功取得文件数据块索引", metadata: ["chunks": .data(fileParts)])
+        
         for (i, part) in fileParts.enumerated() {
             let partLength = part.byteEnd - part.byteStart
             let partEncryptedLength = part.encryptedEnd - part.encryptedStart
@@ -189,6 +221,7 @@ extension __FileReader {
             let tailIntersectionResult: PartIntersectionResult
             
             if i == 0 {
+                logger.debug("处理首个数据块")
                 let res = try required(throws: File.Errcase.readFileFailed, "头指针落点分析失败，\(filePath)") {
                     try ChunkHelpers.index(
                         readRange.lowerBound - part.byteStart + part.byteHeadIgnore,
@@ -197,11 +230,14 @@ extension __FileReader {
                     )
                 }
                 headIntersectionResult = res.chunkBegin == 0 ? .all : .intersection(res)
+                
+                logger.debug("头指针落点分析成功", metadata: ["result": .data(headIntersectionResult)])
             } else {
                 headIntersectionResult = .all
             }
             
             if i == fileParts.count - 1 {
+                logger.debug("处理末尾数据块")
                 let res = try required(throws: File.Errcase.readFileFailed, "尾指针落点分析失败，\(filePath)") {
                     try ChunkHelpers.index(
                         readRange.upperBound - part.byteStart + part.byteHeadIgnore,
@@ -210,6 +246,8 @@ extension __FileReader {
                     )
                 }
                 tailIntersectionResult = res.chunks.count == 0 ? .all : .intersection(res)
+                
+                logger.debug("尾指针落点分析成功", metadata: ["result": .data(tailIntersectionResult)])
             } else {
                 tailIntersectionResult = .all
             }
@@ -234,12 +272,27 @@ extension __FileReader {
                 chunkReadEnd = part.encryptedStart + intersect.chunkBegin + (intersect.rangeInIntersection ? 0 : intersect.chunks.first!)
             }
             
+            logger.debug("计算索引数据", metadata: [
+                "chunk_read_start_offset": .stringConvertible(chunkReadStartOffset),
+                "chunk_read_end": .stringConvertible(chunkReadEnd),
+                "tag_start": .stringConvertible(tagStart)
+            ])
+            
+            logger.debug("准备读取文件块", metadata: [
+                "in": .stringConvertible(part.encryptedStart + chunkReadStartOffset..<chunkReadEnd),
+                "chunk_length_bytes": .stringConvertible(fileCrypto.chunkSize + Crypto.Symm.Stream.cipherExtraLength)
+            ])
+            
             let chunks = fileReadHandler.readChunks(
                 in: part.encryptedStart + chunkReadStartOffset..<chunkReadEnd,
                 chunkLength: .bytes(fileCrypto.chunkSize + Crypto.Symm.Stream.cipherExtraLength)
             )
 
             let curReadingPartEncryptedLength = chunkReadEnd - part.encryptedStart - chunkReadStartOffset
+            
+            logger.debug("加密内容数据总长度", metadata: [
+                "cur_reading_part_encrypted_length": .stringConvertible(curReadingPartEncryptedLength)
+            ])
             
             try await required(throws: File.Errcase.readFileFailed, "未知错误，\(filePath)") {
                 var curPartSize = 0
@@ -251,7 +304,15 @@ extension __FileReader {
                     curPartSize += chunk.readableBytes
                     let last = curPartSize == curReadingPartEncryptedLength
                     
+                    logger.debug("解密文件块 \(curChunkIndex)", metadata: [
+                        "size": .stringConvertible(chunk.data.count)
+                    ])
+                    
                     var data: ByteBuffer = try Crypto.Symm.Stream.decrypt(chunk.data, key: key, chunkTag: tagStart + curChunkIndex).get()
+                    
+                    logger.debug("解密文件块 \(curChunkIndex) 完成", metadata: [
+                        "plain_size": .stringConvertible(data.readableBytes)
+                    ])
                     
                     if curEncryptedSize == 0 {
                         data.moveReaderIndex(forwardBy: Int(part.byteHeadIgnore))
@@ -279,6 +340,10 @@ extension __FileReader {
                         }
                     }
                     
+                    logger.debug("文件块 \(curChunkIndex) 读取", metadata: [
+                        "size": .stringConvertible(data.readableBytes)
+                    ])
+                    
                     await reader.send(.init(buffer: data))
                     
                     curChunkIndex += 1
@@ -298,6 +363,7 @@ extension File {
         let key: Crypto.Symm.Key
         let filePath: StoragePath
         let fileRealPath: FilePath
+        let logger: Logger
         
         let lock = NIOLock()
         let __fileHandler: any FileHandleProtocol
@@ -310,6 +376,7 @@ extension File {
             filePath: StoragePath,
             fileRealPath: FilePath,
             fileHandler: ReadableFileHandle,
+            logger: Logger,
             storage: FileStorage
         ) {
             self.fileIndex = fileIndex
@@ -318,6 +385,7 @@ extension File {
             self.storage = storage
             self.filePath = filePath
             self.fileRealPath = fileRealPath
+            self.logger = logger
             self.__fileHandler = fileHandler
         }
     }

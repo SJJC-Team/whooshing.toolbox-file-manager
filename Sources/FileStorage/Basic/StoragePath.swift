@@ -1,5 +1,6 @@
 import ErrorHandle
 import Foundation
+import LoggingAdvanced
 
 /// 该模块 `FileStorage` 中存储的文件的相对路径结构体，封装路径的组成部分并提供路径操作。
 ///
@@ -168,10 +169,13 @@ public struct StoragePath: Sendable {
     }
 }
 
-extension StoragePath: CustomStringConvertible {
+extension StoragePath: CustomStringConvertible, Loggerable {
     /// 路径的描述字符串，即路径字符串。
     @inlinable
     public var description: String { self.string }
+    
+    @inlinable
+    public var summaryDescription: String { self.string }
 }
 
 extension StoragePath: ExpressibleByStringLiteral {

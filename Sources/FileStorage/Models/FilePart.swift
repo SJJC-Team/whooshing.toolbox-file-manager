@@ -2,6 +2,8 @@ import PgSQL
 import Fluent
 import Foundation
 import DataConvertable
+import LoggingAdvanced
+import AnyCodable
 
 @usableFromInline
 final class FilePart: PGModel, @unchecked Sendable {
@@ -82,5 +84,43 @@ extension FilePart {
         init(tdeEncrypt: Bool = true) {
             self.tdeEncrypt = tdeEncrypt
         }
+    }
+}
+
+extension FilePart: Loggerable, CustomStringConvertible {
+    @inlinable
+    var json: [String: AnyCodable] {[
+        "id": AnyCodable(id),
+        "tag_start": AnyCodable(tagStart),
+        "byte_start": AnyCodable(byteStart),
+        "byte_end": AnyCodable(byteEnd),
+        "byte_head_ignore": AnyCodable(byteHeadIgnore),
+        "byte_tail_ignore": AnyCodable(byteTailIgnore),
+        "encrypted_start": AnyCodable(encryptedStart),
+        "encrypted_end": AnyCodable(encryptedEnd),
+        "delete_at": AnyCodable(deleteAt)
+    ]}
+    
+    @usableFromInline
+    var summaryJson: [String: AnyCodable] {[
+        "id": AnyCodable(id),
+        "file_id": AnyCodable(fileIndex.id),
+        "tag_start": AnyCodable(tagStart),
+        "byte_start": AnyCodable(byteStart),
+        "byte_end": AnyCodable(byteEnd),
+        "byte_head_ignore": AnyCodable(byteHeadIgnore),
+        "byte_tail_ignore": AnyCodable(byteTailIgnore),
+        "encrypted_start": AnyCodable(encryptedStart),
+        "encrypted_end": AnyCodable(encryptedEnd)
+    ]}
+    
+    @usableFromInline
+    var description: String {
+        formatJson(json)
+    }
+    
+    @usableFromInline
+    var summaryDescription: String {
+        formatJson(summaryJson)
     }
 }

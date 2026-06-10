@@ -1,6 +1,8 @@
 import NIOFileSystem
 import ErrorHandle
 import Foundation
+import LoggingAdvanced
+import AnyCodable
 
 public extension FileStorage {
     
@@ -15,20 +17,34 @@ public extension FileStorage {
         public let rwxPermissions: FilePermissions?
         
         /// 文件所有者的标识方式。
-        public enum User: Hashable, Sendable {
+        public enum User: Hashable, Sendable, CustomStringConvertible {
             /// 使用用户 ID 指定。
             case id(CUnsignedLong)
             /// 使用用户名指定。
             case name(String)
+            
+            public var description: String {
+                switch self {
+                case .id(let id): "u#\(id)"
+                case .name(let name): "u-\(name)"
+                }
+            }
         }
         
         /// 文件所属组的标识方式。
         @frozen
-        public enum Group: Hashable, Sendable {
+        public enum Group: Hashable, Sendable, CustomStringConvertible {
             /// 使用组 ID 指定。
             case id(CUnsignedLong)
             /// 使用组名指定。
             case name(String)
+            
+            public var description: String {
+                switch self {
+                case .id(let id): "g#\(id)"
+                case .name(let name): "g-\(name)"
+                }
+            }
         }
         
         /// 创建 UnixPermission 配置对象。
@@ -104,6 +120,20 @@ public extension FileStorage {
     }
 }
 
+extension FileStorage.UnixPermission: Loggerable, CustomStringConvertible {
+    public var description: String {
+        formatJson([
+            "owner": AnyCodable(owner?.description ?? "null"),
+            "group": AnyCodable(group?.description ?? "null"),
+            "file_permission": AnyCodable(rwxPermissions?.description ?? "null"),
+        ])
+    }
+    
+    public var summaryDescription: String {
+        "owner: \(owner?.description ?? "null"), group: \(group?.description ?? "null"), rwx: \(rwxPermissions?.description ?? "null")"
+    }
+}
+
 /// 工具集，用于路径处理与用户/组合法性验证。
 @frozen
 public struct FileSystemTools {
@@ -112,7 +142,10 @@ public struct FileSystemTools {
     /// - 参数 pathToAppend: 要追加的路径。
     /// - 返回: 标准化后的完整路径。
     @inlinable
-    public static func resolvePath(basePath: String = FileManager.default.currentDirectoryPath, append pathToAppend: String) -> String {
+    public static func resolvePath(
+        basePath: String = FileManager.default.currentDirectoryPath,
+        append pathToAppend: String
+    ) -> String {
         let base = (basePath as NSString).expandingTildeInPath
         let baseURL = URL(fileURLWithPath: base)
         let appended = (pathToAppend as NSString).expandingTildeInPath
