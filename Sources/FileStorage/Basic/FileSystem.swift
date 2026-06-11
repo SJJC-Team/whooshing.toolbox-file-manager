@@ -121,12 +121,14 @@ public extension FileStorage {
 }
 
 extension FileStorage.UnixPermission: Loggerable, CustomStringConvertible {
+    public var json: [String: AnyCodable] {[
+        "owner": AnyCodable(owner?.description ?? "null"),
+        "group": AnyCodable(group?.description ?? "null"),
+        "file_permission": AnyCodable(rwxPermissions?.description ?? "null"),
+    ]}
+    
     public var description: String {
-        formatJson([
-            "owner": AnyCodable(owner?.description ?? "null"),
-            "group": AnyCodable(group?.description ?? "null"),
-            "file_permission": AnyCodable(rwxPermissions?.description ?? "null"),
-        ])
+        formatJson(json)
     }
     
     public var summaryDescription: String {
