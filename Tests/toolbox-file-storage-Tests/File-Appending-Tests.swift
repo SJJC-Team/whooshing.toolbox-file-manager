@@ -157,7 +157,7 @@ struct FileAppendingTests {
 
         await #expect(throws: BscError<File.Errcase>.self) {
             try await file.withWriter { writer in
-                try await writer.write(at: .begin(of: begin), bytes: randomData(size: .init(size)), method: .insert)
+                writer.write(at: .begin(of: begin), bytes: randomData(size: .init(size)), method: .insert)
             }.get()
         }
         
