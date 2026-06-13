@@ -33,26 +33,3 @@ public extension File {
         }
     }
 }
-
-public extension File {
-    @inlinable
-    func openForRead() async -> Res<FileReader, Errcase> {
-        await .async { () throws(BscError<Errcase>) in
-            try await openForRead()
-        }
-    }
-    
-    @inlinable
-    func openForWrite() async -> Res<FileWriter, Errcase> {
-        await .async { () throws(BscError<Errcase>) in
-            try await openForWrite()
-        }
-    }
-    
-    @inlinable
-    func openForReadAndWrite() async -> Res<FileReadWriter, Errcase> {
-        await .async { () throws(BscError<Errcase>) in
-            try await openForReadAndWrite()
-        }
-    }
-}

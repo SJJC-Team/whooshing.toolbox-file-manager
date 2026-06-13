@@ -8,7 +8,7 @@ public extension FileStorage {
     
     /// 表示文件系统中可选的 Unix 权限配置，包括所有者、所属组和 POSIX 权限位。
     @frozen
-    struct UnixPermission: Hashable, Sendable {
+    struct UnixPermission: Hashable, Codable, Sendable {
         /// 所有者用户标识，可指定 UID 或用户名。
         public let owner: User?
         /// 所属用户组标识，可指定 GID 或组名。
@@ -17,7 +17,7 @@ public extension FileStorage {
         public let rwxPermissions: FilePermissions?
         
         /// 文件所有者的标识方式。
-        public enum User: Hashable, Sendable, CustomStringConvertible {
+        public enum User: Hashable, Codable, Sendable, CustomStringConvertible {
             /// 使用用户 ID 指定。
             case id(CUnsignedLong)
             /// 使用用户名指定。
@@ -33,7 +33,7 @@ public extension FileStorage {
         
         /// 文件所属组的标识方式。
         @frozen
-        public enum Group: Hashable, Sendable, CustomStringConvertible {
+        public enum Group: Hashable, Codable, Sendable, CustomStringConvertible {
             /// 使用组 ID 指定。
             case id(CUnsignedLong)
             /// 使用组名指定。

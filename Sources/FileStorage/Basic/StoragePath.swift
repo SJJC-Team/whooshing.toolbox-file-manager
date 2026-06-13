@@ -290,6 +290,19 @@ extension StoragePath: Equatable, AdditiveArithmetic {
     public static func -= (lhs: inout StoragePath, rhs: StoragePath) { lhs = lhs - rhs }
 }
 
+extension StoragePath: Codable {
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let components = try container.decode([String].self)
+        self.init(components: components)
+    }
+    
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(self.components)
+    }
+}
+
 extension StoragePath {
     /// 方向枚举
     @frozen
