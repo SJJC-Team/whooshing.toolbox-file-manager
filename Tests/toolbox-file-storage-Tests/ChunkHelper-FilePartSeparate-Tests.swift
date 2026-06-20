@@ -1,5 +1,4 @@
 import Testing
-import ErrorHandle
 import Foundation
 import Cryptos
 @testable import FileStorage

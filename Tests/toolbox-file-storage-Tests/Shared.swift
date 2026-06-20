@@ -1,13 +1,8 @@
 import Testing
-import ErrorHandle
-import NIOCore
 import NIOPosix
-import NIO
 import Cryptos
 import NIOFileSystem
 import Foundation
-import Logging
-import LoggingAdvanced
 @testable import FileStorage
 
 enum TestingData {
@@ -34,9 +29,7 @@ struct TestingShared {
     @MainActor static var fileStorage: FileStorage? = nil
     @MainActor static var testStage: TestStage = .entryBasics
     @MainActor static let loggingSystem: Void = {
-        var factory = LoggingFactory()
-        factory.add("Console")
-        factory.bootstrap()
+        LoggingFactory(strategies: [.init(label: "Console", level: .trace)]).bootstrap()
     }()
     
     @MainActor

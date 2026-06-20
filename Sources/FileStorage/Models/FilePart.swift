@@ -1,9 +1,6 @@
 import PgSQL
-import Fluent
 import Foundation
-import DataConvertable
 import LoggingAdvanced
-import AnyCodable
 
 @usableFromInline
 final class FilePart: PGModel, @unchecked Sendable {

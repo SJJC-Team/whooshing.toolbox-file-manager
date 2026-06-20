@@ -1,4 +1,3 @@
-import ErrorHandle
 import NIOAdvanced
 
 public extension Directory {

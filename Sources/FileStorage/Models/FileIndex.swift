@@ -1,8 +1,6 @@
 import PgSQL
-import Fluent
 import Foundation
 import LoggingAdvanced
-import AnyCodable
 
 @usableFromInline
 final class FileIndex: PGModel, @unchecked Sendable {

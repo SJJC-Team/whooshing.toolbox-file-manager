@@ -1,5 +1,4 @@
 import Testing
-import ErrorHandle
 @testable import FileStorage
 
 @Suite("ChunkHelper 重分割算法测试集")
