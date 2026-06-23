@@ -328,37 +328,3 @@ public final class FileStorage: @unchecked Sendable {
         self.logger.derive(metadata: ["op-id": .stringConvertible(UUID())])
     }
 }
-
-extension Database {
-    /// 使用自定义错误类型封装的事务执行器。
-    @inlinable
-    func trans<T, G>(_ closure: @escaping @Sendable (Self) -> EventLoopResult<T, G>) -> EventLoopResult<T, G> {
-        self.trans { db in
-            closure(db).wrapped
-        }.withError()
-    }
-    
-    /// 使用 Fluent 的事务封装异步回调。
-    @inlinable
-    func trans<T>(_ closure: @escaping @Sendable (Self) -> EventLoopFuture<T>) -> EventLoopFuture<T> {
-        self.transaction { db in
-            closure(db as! Self)
-        }
-    }
-    
-    /// 在 async/await 环境中执行数据库事务。
-    @inlinable
-    func atrans<T: Sendable, E>(_ closure: @escaping @Sendable (Self) async throws(E) -> T) async throws(E) -> T {
-        do {
-            return try await self.transaction { db throws(E) in
-                do {
-                    return try await closure(db as! Self)
-                } catch {
-                    throw error as! E
-                }
-            }
-        } catch {
-            throw error as! E
-        }
-    }
-}

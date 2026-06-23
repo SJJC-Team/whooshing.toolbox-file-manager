@@ -387,7 +387,7 @@ extension Directory {
                 SELECT id FROM descendants;
             """
             
-            return storage.db.trans { db in
+            return storage.db.trans(throws: File.Errcase.deleteDirectoryFailed, "数据库事务执行失败", category: .internal) { db in
                 db.query(query)
                 .flatMapThrowing { res in
                     try res.map { try $0.decode(String.self) }

@@ -1,5 +1,5 @@
 {
-  "originHash" : "657cfa697b2445ae76458603e319386d1180b6be372fadc2d8c2f132311ac6bd",
+  "originHash" : "b721889ef073dea5522092ff18a4d118aa24351070a7485481c18244809651ce",
   "pins" : [
     {
       "identity" : "anycodable",
@@ -150,8 +150,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-certificates.git",
       "state" : {
-        "revision" : "bde8ca32a096825dfce37467137c903418c1893d",
-        "version" : "1.19.1"
+        "revision" : "eaa10d47d19919979dd8df22ff4fd6349b1108d4",
+        "version" : "1.19.2"
       }
     },
     {
@@ -330,8 +330,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/whooshing-workshop/whooshing-vapor.git",
       "state" : {
-        "revision" : "d83c5121c3880fee6c0378d82fd1b90e8a9aac13",
-        "version" : "1.1.4"
+        "revision" : "1c2e4df37347d91032627bb163f4bf51c0a427e7",
+        "version" : "1.1.5"
       }
     },
     {
@@ -348,8 +348,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/whooshing-workshop/whooshing.toolbox-pgsql.git",
       "state" : {
-        "revision" : "7638f8e7ca4dafb752d52140aaf53726e0b95169",
-        "version" : "1.1.1"
+        "revision" : "53a97075e0369a981f767f80642b7394191b2765",
+        "version" : "1.1.2"
       }
     }
   ],

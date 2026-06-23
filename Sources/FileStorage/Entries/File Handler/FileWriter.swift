@@ -207,7 +207,7 @@ extension __FileWriter {
         let insertIndex = index.index(fileSize: fileIndex.size!)
         let (_, dbOperation) = try await backPressureInsert(at: insertIndex, from: channel, removeLater: false, logger: logger)
         
-        try await storage.db.atrans { db throws(File.Errcase.ErrType) in
+        try await storage.db.atrans(throws: File.Errcase.writeFileFailed, "数据库事务执行失败", category: .internal) { db throws(File.Errcase.ErrType) in
             try await dbOperation(db)
         }
         
@@ -224,7 +224,7 @@ extension __FileWriter {
         let op1 = try await backPressureInsert(at: insertIndex, from: channel, removeLater: true, logger: logger)
         let op2 = try await removeBytes(in: insertIndex..<(min(insertIndex + op1.appendRes.readBytes, fileIndex.size!)), willInsertNext: true, logger: logger)
         
-        try await storage.db.atrans { db throws(File.Errcase.ErrType) in
+        try await storage.db.atrans(throws: File.Errcase.writeFileFailed, "数据库事务执行失败", category: .internal) { db throws(File.Errcase.ErrType) in
             try await op2(db)
             try await op1.dbOperation(db)
         }
@@ -238,7 +238,7 @@ extension __FileWriter {
         logger.info("执行 删除数据 操作", metadata: ["range": .stringConvertible(range)])
         
         let dbOperation = try await removeBytes(in: range, willInsertNext: false, logger: logger)
-        try await storage.db.atrans { db throws(File.Errcase.ErrType) in
+        try await storage.db.atrans(throws: File.Errcase.removeFileDataFailed, "数据库事务执行失败", category: .internal) { db throws(File.Errcase.ErrType) in
             try await dbOperation(db)
         }
         

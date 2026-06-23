@@ -16,7 +16,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/whooshing-workshop/whooshing.toolbox-basic.git", from: "1.6.2"),
-        .package(url: "https://github.com/whooshing-workshop/whooshing.toolbox-pgsql.git", from: "1.1.1"),
+        .package(url: "https://github.com/whooshing-workshop/whooshing.toolbox-pgsql.git", from: "1.1.2"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
         .package(url: "https://github.com/apple/swift-crypto.git", "1.0.0" ..< "4.0.0"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.9.1")
