@@ -283,7 +283,7 @@ public final class FileStorage: @unchecked Sendable {
             let mig = Migrator(
                 databases: self.dbs,
                 migrations: migs,
-                logger: logger,
+                logger: logger.derive(subId: "db"),
                 on: eventLoop,
                 migrationLogLevel: logger.logLevel
             )
@@ -296,7 +296,7 @@ public final class FileStorage: @unchecked Sendable {
             throw Errcase.databaseInitFailed.d("数据库迁移失败", category: .internal).subErr(error)
         }
         
-        guard let db = self.dbs.database(logger: logger, on: eventLoop) else {
+        guard let db = self.dbs.database(logger: logger.derive(subId: "db"), on: eventLoop) else {
             throw Errcase.databaseInitFailed.d("数据库获取失败", category: .internal)
         }
         
