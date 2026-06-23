@@ -310,7 +310,7 @@ extension __FileWriter {
         from channel: AsyncThrowingChannel<Data, Error>,
         removeLater: Bool,
         logger: Logger
-    ) async throws(BscError<File.Errcase>) -> (
+    ) async throws(File.Errcase.ErrType) -> (
         appendRes: DataAppendingResult,
         dbOperation: @Sendable (FileStorage.PGDatabase) async throws(File.Errcase.ErrType) -> Void
     ) {
@@ -319,14 +319,14 @@ extension __FileWriter {
         ])
         
         guard byteStartIndex <= fileIndex.size!, byteStartIndex >= 0 else {
-            throw File.Errcase.writeFileFailed.d("插入索引有误").metadata([
+            throw File.Errcase.writeFileFailed.d("插入索引有误", category: .external()).metadata([
                 "range": .stringConvertible(0...fileIndex.size!),
                 "index": .stringConvertible(byteStartIndex)
             ])
         }
         
         // 将数据直接写入到加密文件中
-        let appendRes = try await required(throws: File.Errcase.writeFileFailed, "将数据写入到文件中时失败，\(fileRealPath)") {
+        let appendRes = try await required(throws: File.Errcase.writeFileFailed, "将数据写入到文件中时失败，\(fileRealPath)", category: .internal) {
             try await appendChannelDataAndEncryptToFile(fileWriteHandler, tagStart: fileCrypto.lastTag, channel: channel, logger: logger)
         }
         
@@ -337,7 +337,7 @@ extension __FileWriter {
             return (appendRes, { _ in })
         }
         
-        let fileId = try required(throws: File.Errcase.writeFileFailed, "获取文件 ID 失败") {
+        let fileId = try required(throws: File.Errcase.writeFileFailed, "获取文件 ID 失败", category: .internal) {
             try fileIndex.requireID()
         }
         
@@ -349,7 +349,7 @@ extension __FileWriter {
             // 追加到文件最后
             // 查询最后一个 filePart 记录，以用于追加
             // 若 last 不存在，则表示该文件是空的
-            let last = try await required(throws: File.Errcase.writeFileFailed, "数据库检索失败，\(filePath)") {
+            let last = try await required(throws: File.Errcase.writeFileFailed, "数据库检索失败，\(filePath)", category: .internal) {
                 try await FilePart.query(on: storage.db)
                     .filter(\.$fileIndex.$id == fileIndex.requireID())
                     .sort(\.$byteEnd, .descending)
@@ -381,7 +381,7 @@ extension __FileWriter {
             logger.debug("本次操作为文件内容插入")
             // 进行数据插入，而非追加
             // 先对影响块进行分割
-            let separateResult = try await required(throws: File.Errcase.writeFileFailed, "文件块分割失败，\(filePath)") {
+            let separateResult = try await required(throws: File.Errcase.writeFileFailed, "文件块分割失败，\(filePath)", category: .inherit) {
                 try await separateFilePart(from: byteStartIndex)
             }
             
@@ -437,7 +437,7 @@ extension __FileWriter {
                 }
             }
             
-            let fileId = try required(throws: File.Errcase.writeFileFailed, "获取文件 ID 失败，\(filePath)") {
+            let fileId = try required(throws: File.Errcase.writeFileFailed, "获取文件 ID 失败，\(filePath)", category: .internal) {
                 try fileIndex.requireID()
             }
             
@@ -464,7 +464,7 @@ extension __FileWriter {
         return (
             appendRes,
             { db throws(File.Errcase.ErrType) in
-                try await required(throws: File.Errcase.writeFileFailed, "数据库操作失败，\(filePath)") {
+                try await required(throws: File.Errcase.writeFileFailed, "数据库操作失败，\(filePath)", category: .internal) {
                     try await separateTask(db)
                     // 更新加密数据的信息
                     fileCrypto.lastTag = appendRes.lastTag
@@ -485,7 +485,7 @@ extension __FileWriter {
         in range: Range<Int64>,
         willInsertNext: Bool,
         logger: Logger
-    ) async throws(BscError<File.Errcase>) -> (@Sendable (FileStorage.PGDatabase) async throws(File.Errcase.ErrType) -> Void) {
+    ) async throws(File.Errcase.ErrType) -> (@Sendable (FileStorage.PGDatabase) async throws(File.Errcase.ErrType) -> Void) {
         logger.debug("文件数据范围", metadata: ["range": .stringConvertible(0..<fileIndex.size!)])
         
         guard
@@ -494,7 +494,7 @@ extension __FileWriter {
             range.upperBound <= fileIndex.size!,
             range.upperBound >= 0
         else {
-            throw File.Errcase.removeFileDataFailed.d("提供的索引大小有误").metadata([
+            throw File.Errcase.removeFileDataFailed.d("提供的索引大小有误", category: .external()).metadata([
                 "range": .stringConvertible(range),
                 "file_range": .stringConvertible(0..<fileIndex.size!)
             ])
@@ -510,7 +510,7 @@ extension __FileWriter {
         let task = try await __removeBytes(in: range, willInsertNext: willInsertNext, logger: logger)
         
         return { db in
-            try await required(throws: File.Errcase.removeFileDataFailed, "数据库操作失败，\(filePath)") {
+            try await required(throws: File.Errcase.removeFileDataFailed, "数据库操作失败，\(filePath)", category: .internal) {
                 try await task(db)
                 // 更新加密数据的信息
                 fileCrypto.encryptedSize -= removingBytes
@@ -531,9 +531,9 @@ extension __FileWriter {
         in range: Range<Int64>,
         willInsertNext: Bool,
         logger: Logger
-    ) async throws(BscError<File.Errcase>) -> @Sendable (FileStorage.PGDatabase) async throws -> Void {
+    ) async throws(File.Errcase.ErrType) -> @Sendable (FileStorage.PGDatabase) async throws -> Void {
         let removingBytes = range.upperBound - range.lowerBound
-        let (lowerBoundSepResult, upperBoundSepResult) = try await required(throws: File.Errcase.removeFileDataFailed, "文件块分割失败，\(filePath)") {
+        let (lowerBoundSepResult, upperBoundSepResult) = try await required(throws: File.Errcase.removeFileDataFailed, "文件块分割失败，\(filePath)", category: .inherit) {
             (
                 // 以 lowerBound 对影响块进行分割
                 try await separateFilePart(from: range.lowerBound),
@@ -549,7 +549,7 @@ extension __FileWriter {
         
         let task: @Sendable (FileStorage.PGDatabase) async throws -> Void
         
-        let fileId = try required(throws: File.Errcase.removeFileDataFailed, "获取文件 ID 失败，\(filePath)") {
+        let fileId = try required(throws: File.Errcase.removeFileDataFailed, "获取文件 ID 失败，\(filePath)", category: .internal) {
             try fileIndex.requireID()
         }
         
@@ -623,7 +623,7 @@ extension __FileWriter {
             
         case (.noNeed(part: let lowerPart), .notEof(.separated(left: let upperLeft, right: let upperRight))):
             
-            let (lowerId, upperId) = try required(throws: File.Errcase.removeFileDataFailed, "获取 Part id 失败") {
+            let (lowerId, upperId) = try required(throws: File.Errcase.removeFileDataFailed, "获取 Part id 失败", category: .internal) {
                 try (lowerPart.requireID(), upperRight.requireID())
             }
             
@@ -722,7 +722,7 @@ extension __FileWriter {
             
         case (.separated(left: let lowerLeft, right: let lowerRight), .notEof(.separated(left: let upperLeft, right: let upperRight))):
             
-            let (lowerId, upperId) = try required(throws: File.Errcase.removeFileDataFailed, "获取 Part id 失败") {
+            let (lowerId, upperId) = try required(throws: File.Errcase.removeFileDataFailed, "获取 Part id 失败", category: .internal) {
                 try (lowerRight.requireID(), upperRight.requireID())
             }
             
@@ -857,9 +857,9 @@ extension __FileWriter {
         tagStart: Int,
         channel: AsyncThrowingChannel<Data, Error>,
         logger: Logger
-    ) async throws(BscError<FileWriterError>) -> DataAppendingResult {
+    ) async throws(FileWriterError.ErrType) -> DataAppendingResult {
         // 取得该文件的大小，用于追加数据
-        let size = try await required(throws: FileWriterError.appendDataFailed, "获取真实文件大小信息时失败") {
+        let size = try await required(throws: FileWriterError.appendDataFailed, "获取真实文件大小信息时失败", category: .internal) {
             try await fileHandler.info().size
         }
         logger.debug("取得真实文件大小", metadata: ["size": .stringConvertible(size)])
@@ -869,7 +869,7 @@ extension __FileWriter {
         // 写入的数据字节
         var readBytes: Int64 = 0
         var curTag = tagStart
-        try await required(throws: FileWriterError.appendDataFailed, "将数据写入真实文件中时失败") {
+        try await required(throws: FileWriterError.appendDataFailed, "将数据写入真实文件中时失败", category: .inherit) {
             // 按照 fileCrypto.chunkSize 大小读取每一块数据
             for try await chunk in channel.chunkedChannel(fileCrypto.chunkSize) {
                 // 自动将 channel 中的数据流加密写入
@@ -903,9 +903,9 @@ extension __FileWriter {
     /// - Returns: 分割的结果，需要调用者自己将数据更新入数据库中
     func separateFilePart(
         from index: Int64
-    ) async throws(BscError<FileWriterError>) -> FileWriterSeparationResult {
+    ) async throws(FileWriterError.ErrType) -> FileWriterSeparationResult {
         // 从数据库中取得包括该插入位置的范围块
-        let p = try await required(throws: FileWriterError.separateFilePartFailed, "数据库查询失败") {
+        let p = try await required(throws: FileWriterError.separateFilePartFailed, "数据库查询失败", category: .internal) {
             try await FilePart.query(on: storage.db)
                 .filter(\.$fileIndex.$id == fileIndex.requireID())
                 .filter(\.$byteStart <= index)
@@ -918,22 +918,24 @@ extension __FileWriter {
             // 1. 可能该文件是空的
             // 2. 可能索引分割位置 == 总大小
             // 3. 可能是索引大小超限
-            throw FileWriterError.separateFilePartFailed.d("索引超限")
+            throw FileWriterError.separateFilePartFailed.d("索引超限", category: .external())
         }
         
         if part.byteStart - part.byteHeadIgnore == index {
             return .noNeed(part: part)
         }
         
-        let indexResult = try required(throws: FileWriterError.separateFilePartFailed, "落点判断失败") {
+        let bufferSpace = BufferSpace(.chunk(fileCrypto.chunkSize, total: part.byteEnd - part.byteStart + part.byteHeadIgnore + part.byteTailIgnore))
+        
+        let indexResult = try required(throws: FileWriterError.separateFilePartFailed, "落点判断失败", category: .inherit) {
             try ChunkHelpers.index(
                 index - part.byteStart + part.byteHeadIgnore,
-                in: .init(.chunk(fileCrypto.chunkSize, total: part.byteEnd - part.byteStart + part.byteHeadIgnore + part.byteTailIgnore)),
+                in: bufferSpace,
                 offset: Crypto.Symm.Stream.cipherExtraLength
             )
         }
         
-        let separationRes = try required(throws: FileWriterError.separateFilePartFailed, "数据片段分割失败") {
+        let separationRes = try required(throws: FileWriterError.separateFilePartFailed, "数据片段分割失败", category: .inherit) {
             try ChunkHelpers.filePartSeparate(in: part, fileCrypto: fileCrypto, indexResult: indexResult)
         }
         

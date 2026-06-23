@@ -79,13 +79,13 @@ public extension FileStorage {
             switch owner {
             case .id(let id):
                 guard FileSystemTools.isValidUID(uid_t(id)) else {
-                    return .failure(.uidNotValid, String(id))
+                    return .failure(.uidNotValid, String(id), category: .external())
                 }
                 
                 permissions[.ownerAccountID] = id
             case .name(let name):
                 guard FileSystemTools.isValidUsername(name) else {
-                    return .failure(.userNameNotValid, name)
+                    return .failure(.userNameNotValid, name, category: .external())
                 }
                 
                 permissions[.ownerAccountName] = name
@@ -95,13 +95,13 @@ public extension FileStorage {
             switch group {
             case .id(let id):
                 guard FileSystemTools.isValidGID(gid_t(id)) else {
-                    return .failure(.gidNotValid, String(id))
+                    return .failure(.gidNotValid, String(id), category: .external())
                 }
                 
                 permissions[.groupOwnerAccountID] = id
             case .name(let name):
                 guard FileSystemTools.isValidGroupname(name) else {
-                    return .failure(.groupNameNotValid, name)
+                    return .failure(.groupNameNotValid, name, category: .external())
                 }
                 
                 permissions[.groupOwnerAccountName] = name

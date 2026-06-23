@@ -223,7 +223,7 @@ public final class FileStorage: @unchecked Sendable {
         fileExtension: String,
         filePermission: UnixPermission?,
         debuging: Debuging? = nil
-    ) async throws(BscError<Errcase>) {
+    ) async throws(Errcase.ErrType) {
         let storagePath = FileSystemTools.resolvePath(append: storagePath)
         
         self.eventLoop = eventLoop
@@ -247,15 +247,15 @@ public final class FileStorage: @unchecked Sendable {
         
         initLogger.info("正在准备文件存储区")
         
-        let fileAttributes = try initLogger.required(throws: Errcase.fileSystemInitFailed, "文件存储区属性读取失败", metadata: ["path": .string(storagePath)]) {
+        let fileAttributes = try initLogger.required(throws: Errcase.fileSystemInitFailed, "文件存储区属性读取失败", metadata: ["path": .string(storagePath)], category: .internal) {
             try FileManager.default.attributesOfItem(atPath: storagePath)
         }
         
-        let permissionAttributes = try initLogger.required(throws: Errcase.fileSystemInitFailed, "提供的文件权限值无效", metadata: ["file_permission": .data(filePermission)]) {
+        let permissionAttributes = try initLogger.required(throws: Errcase.fileSystemInitFailed, "提供的文件权限值无效", metadata: ["file_permission": .data(filePermission)], category: .external()) {
             try filePermission?.attributes.get()
         } ?? [:]
         
-        try initLogger.required(throws: Errcase.fileSystemInitFailed, "修改主存储目录权限失败", metadata: ["path": .string(storagePath), "file_permission": .data(filePermission)]) {
+        try initLogger.required(throws: Errcase.fileSystemInitFailed, "修改主存储目录权限失败", metadata: ["path": .string(storagePath), "file_permission": .data(filePermission)], category: .internal) {
             try FileManager.default.setAttributes(permissionAttributes, ofItemAtPath: storagePath)
         }
         
@@ -265,7 +265,7 @@ public final class FileStorage: @unchecked Sendable {
             let type = fileAttributes[.type] as? FileAttributeType,
             type == .typeDirectory
         else {
-            throw initLogger.errThrow(Errcase.fileSystemInitFailed.d("文件存储区属性获取失败").metadata(["path": .string(storagePath)]))
+            throw initLogger.errThrow(Errcase.fileSystemInitFailed.d("文件存储区属性获取失败", category: .internal).metadata(["path": .string(storagePath)]))
         }
         
         initLogger.info("文件存储区准备完成")
@@ -293,15 +293,15 @@ public final class FileStorage: @unchecked Sendable {
         } catch {
             await self.dbs.shutdownAsync()
             try? await eventLoop.shutdownGracefully()
-            throw Errcase.databaseInitFailed.d("数据库迁移失败").subErr(error)
+            throw Errcase.databaseInitFailed.d("数据库迁移失败", category: .internal).subErr(error)
         }
         
         guard let db = self.dbs.database(logger: logger, on: eventLoop) else {
-            throw Errcase.databaseInitFailed.d("数据库获取失败")
+            throw Errcase.databaseInitFailed.d("数据库获取失败", category: .internal)
         }
         
         guard let db = db as? PGDatabase else {
-            throw Errcase.databaseInitFailed.d("数据库并非 PostgreSQL 数据库")
+            throw Errcase.databaseInitFailed.d("数据库并非 PostgreSQL 数据库", category: .external(suggestions: ["请检查数据库服务类型，目前仅支持 PostgreSQL 数据库"]))
         }
 
         self.indexDatabase = db

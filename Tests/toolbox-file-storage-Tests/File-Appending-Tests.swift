@@ -154,7 +154,7 @@ struct FileAppendingTests {
         
         #expect(file.mimeType == .gzip)
 
-        await #expect(throws: BscError<File.Errcase>.self) {
+        await #expect(throws: File.Errcase.ErrType.self) {
             try await file.withWriter { writer in
                 writer.write(at: .begin(of: begin), bytes: randomData(size: .init(size)), method: .insert)
             }.get()
@@ -165,7 +165,7 @@ struct FileAppendingTests {
                 try await writer.write(at: .end(of: begin), bytes: randomData(size: .init(size)), method: .insert)
                 try #require(Bool(false))
             } catch {
-                let e = error as! BscError<File.Errcase>
+                let e = error as! File.Errcase.ErrType
                 #expect(e.error == File.Errcase.writeFileFailed)
                 #expect(e.explain == "插入索引有误")
                 print(error)

@@ -24,7 +24,7 @@ struct FilePartSeparateTests {
             lastTag: Int,
             filePart: FilePartParas,
             indexRes: ChunkHelpers.IntersectionResult,
-            expect: Result<(FilePartParas?, FilePartParas?), BscError<FileWriterError>>
+            expect: Result<(FilePartParas?, FilePartParas?), FileWriterError.ErrType>
         )
     ] = [
         (
@@ -134,7 +134,7 @@ struct FilePartSeparateTests {
         lastTag: Int,
         partParas: FilePartParas,
         indexRes: ChunkHelpers.IntersectionResult,
-        expect: Result<(FilePartParas?, FilePartParas?), BscError<FileWriterError>>
+        expect: Result<(FilePartParas?, FilePartParas?), FileWriterError.ErrType>
     ) async throws {
         
         let index = FileIndex()

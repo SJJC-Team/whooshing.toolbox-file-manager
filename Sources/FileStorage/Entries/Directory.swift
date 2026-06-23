@@ -127,9 +127,9 @@ public struct Directory: StorageEntry, Sendable {
         from index: FileIndex,
         parent: StoragePath?,
         storage: FileStorage
-    ) throws(BscError<Errcase>) {
-        guard index.type == .directory else { throw Errcase.getDirectoryFailed.d("目标并非是一个目录，而是 \(index.type)") }
-        self.id = try required(throws: Errcase.getDirectoryFailed, "获取目录 ID 失败") {
+    ) throws(Errcase.ErrType) {
+        guard index.type == .directory else { throw Errcase.getDirectoryFailed.d("目标并非是一个目录", category: .external(suggestions: ["请指定一个目录"])).metadata(["type": .data(index.type.rawValue)]) }
+        self.id = try required(throws: Errcase.getDirectoryFailed, "获取目录 ID 失败", category: .internal) {
             try index.getId()
         }
         self.name = index.name
@@ -173,7 +173,7 @@ public extension Directory {
         logger.info("执行 目录获取大小 操作", metadata: ["path": .data(path)])
         return subitems().wrapped
             .flatMapEach(on: storage.eventLoop) { $0.getSize().wrapped }
-            .withError(Errcase.fetchDirectorySizeFailed, metadata: ["path": .data(path)])
+            .withError(Errcase.fetchDirectorySizeFailed, metadata: ["path": .data(path)], category: .inherit)
             .map { $0.reduce(0, +) }
             .map { res in
                 logger.info("目录查询大小完成", metadata: ["result": .stringConvertible(res)])
@@ -219,7 +219,7 @@ public extension Directory {
         {
             $0.delete(force: force).wrapped
         }
-        .withError(Errcase.emptyDirectoryFailed, metadata: ["path": .data(path)])
+        .withError(Errcase.emptyDirectoryFailed, metadata: ["path": .data(path)], category: .inherit)
         .map { logger.info("目录清空完成") }
         .logIfFail(logger: logger)
     }
@@ -304,17 +304,17 @@ extension Directory {
         }
         
         return r.all()
-            .withError(Errcase.fetchDirectorySubItemFailed, "数据库查询失败", metadata: ["path": .data(path)])
+            .withError(Errcase.fetchDirectorySubItemFailed, "数据库查询失败", metadata: ["path": .data(path)], category: .inherit)
             .flatMapThrowing
-        { fileIndex throws(BscError<Errcase>) in
-            try fileIndex.map { index throws(BscError<Errcase>) in
+        { fileIndex throws(Errcase.ErrType) in
+            try fileIndex.map { index throws(Errcase.ErrType) in
                 switch index.type {
                 case .file:
-                    return try required(throws: Errcase.fetchDirectorySubItemFailed, "文件获取失败", metadata: ["path": .data(path)]) {
+                    return try required(throws: Errcase.fetchDirectorySubItemFailed, "文件获取失败", metadata: ["path": .data(path)], category: .inherit) {
                         try File(from: index, parent: self.path, storage: storage)
                     }
                 case .directory:
-                    return try required(throws: Errcase.fetchDirectorySubItemFailed, "目录获取失败", metadata: ["path": .data(path)]) {
+                    return try required(throws: Errcase.fetchDirectorySubItemFailed, "目录获取失败", metadata: ["path": .data(path)], category: .inherit) {
                         try Directory(from: index, parent: self.path, storage: storage)
                     }
                 }
@@ -328,7 +328,7 @@ extension Directory {
             !self.isRoot,
             let id = self.id
         else {
-            return storage.eventLoop.makeFailedResult(Errcase.deleteDirectoryFailed, "不可删除根目录")
+            return storage.eventLoop.makeFailedResult(Errcase.deleteDirectoryFailed, "不可删除根目录", category: .external(suggestions: ["请指定除根目录之外的有效路径"]))
         }
         
         if force {
@@ -350,14 +350,14 @@ extension Directory {
             
             // 强制删除，删除数据库文件索引的同时，还需要删除硬盘上的所有关联的真实文件
             return storage.db.query(query)
-                .withError(Errcase.deleteDirectoryFailed, "数据库递归查询子项目失败", metadata: ["path": .data(path)])
+                .withError(Errcase.deleteDirectoryFailed, "数据库递归查询子项目失败", metadata: ["path": .data(path)], category: .internal)
                 .flatMap
             { fileList in
                 FileIndex.query(on: storage.indexDatabase)
                     .filter(\.$id == id)
                     .delete(force: true)
                     .map { fileList }
-                    .withError(Errcase.deleteDirectoryFailed, "数据库递归删除记录失败", metadata: ["path": .data(path)])
+                    .withError(Errcase.deleteDirectoryFailed, "数据库递归删除记录失败", metadata: ["path": .data(path)], category: .internal)
             }.flatMap { fileList in
                 logger.debug("数据库记录删除成功", metadata: ["result": .string(String(describing: fileList))])
                 return storage.db.eventLoop.bridge {
@@ -371,7 +371,7 @@ extension Directory {
                         }
                         try await group.waitForAll()
                     }
-                }.withError(Errcase.deleteDirectoryFailed, "从文件系统删除加密文件失败", metadata: ["path": .data(path)])
+                }.withError(Errcase.deleteDirectoryFailed, "从文件系统删除加密文件失败", metadata: ["path": .data(path)], category: .inherit)
             }
         } else {
             // 软删除，仅递归软删除数据库文件索引
@@ -392,7 +392,7 @@ extension Directory {
                 .flatMapThrowing { res in
                     try res.map { try $0.decode(String.self) }
                 }
-                .withError(Errcase.deleteDirectoryFailed, "数据库递归检索失败", metadata: ["path": .data(path)])
+                .withError(Errcase.deleteDirectoryFailed, "数据库递归检索失败", metadata: ["path": .data(path)], category: .internal)
                 .map { ids in
                     logger.debug("数据库递归检索成功", metadata: ["ids": .array(ids.map { .stringConvertible($0) })])
                     
@@ -401,9 +401,7 @@ extension Directory {
 
                     let timestamp = formatter.string(from: Date())
                     return (ids, timestamp)
-                }
-                .flatMap
-                { ids, ts in
+                }.flatMap { (ids: [String], ts: String) in
                     let indexQuery = SQLQueryString("""
                         UPDATE \(ident: FileIndex.name)
                         SET \(ident: FileIndex.fields.deleteAt.name) = \(literal: ts)
@@ -424,19 +422,19 @@ extension Directory {
                     
                     return db.raw(indexQuery)
                         .run()
-                        .withError(Errcase.deleteDirectoryFailed, "数据库 \(FileIndex.name) 递归软删除失败", metadata: ["path": .data(path)])
+                        .withError(Errcase.deleteDirectoryFailed, "数据库 \(FileIndex.name) 递归软删除失败", metadata: ["path": .data(path)], category: .inherit)
                         .flatMap
                     { _ in
                         logger.debug("数据库 \(FileIndex.name) 递归软删除完成")
                         return db.raw(cryptoQuery)
                             .run()
-                            .withError(Errcase.deleteDirectoryFailed, "数据库 \(FileCrypto.name) 递归软删除失败", metadata: ["path": .data(path)])
+                            .withError(Errcase.deleteDirectoryFailed, "数据库 \(FileCrypto.name) 递归软删除失败", metadata: ["path": .data(path)], category: .inherit)
                             .map { logger.debug("数据库 \(FileCrypto.name) 递归软删除完成") }
                     }.flatMap
                     { _ in
                         db.raw(partQuery)
                             .run()
-                            .withError(Errcase.deleteDirectoryFailed, "数据库 \(FilePart.name) 递归软删除失败", metadata: ["path": .data(path)])
+                            .withError(Errcase.deleteDirectoryFailed, "数据库 \(FilePart.name) 递归软删除失败", metadata: ["path": .data(path)], category: .inherit)
                             .map { logger.debug("数据库 \(FilePart.name) 递归软删除完成") }
                     }
                 }
@@ -447,14 +445,14 @@ extension Directory {
     @usableFromInline
     func __rename(as name: String) -> EventLoopRes<Directory, Errcase> {
         guard !self.isRoot else {
-            return storage.eventLoop.makeFailedResult(Errcase.renameDirectoryFailed, "不可重命名根目录")
+            return storage.eventLoop.makeFailedResult(Errcase.renameDirectoryFailed, "不可重命名根目录", category: .external(suggestions: ["请指定除根目录之外的有效路径"]))
         }
         fileIndex.name = name
         return fileIndex.update(on: storage.indexDatabase)
-            .withError(Errcase.renameDirectoryFailed, "数据库更新失败", metadata: ["path": .data(path)])
+            .withError(Errcase.renameDirectoryFailed, "数据库更新失败", metadata: ["path": .data(path)], category: .internal)
             .flatMapThrowing
-        { () throws(BscError<Errcase>) in
-            try required(throws: Errcase.renameDirectoryFailed, "未知错误", metadata: ["path": .data(path)]) {
+        { () throws(Errcase.ErrType) in
+            try required(throws: Errcase.renameDirectoryFailed, "未知错误", metadata: ["path": .data(path)], category: .inherit) {
                 try .init(from: fileIndex, parent: self.path.isRoot ? nil : self.path.parent, storage: storage)
             }
         }
@@ -463,14 +461,14 @@ extension Directory {
     @usableFromInline
     func __move(to dir: Directory, as name: String? = nil) -> EventLoopRes<Directory, Errcase> {
         guard !self.isRoot else {
-            return storage.eventLoop.makeFailedResult(Errcase.moveDirectoryFailed, "不可操作根目录")
+            return storage.eventLoop.makeFailedResult(Errcase.moveDirectoryFailed, "不可操作根目录", category: .external(suggestions: ["请指定除根目录之外的有效路径"]))
         }
         
         let superId: UUID
         do {
             superId = try dir.fileIndex.requireID()
         } catch {
-            return storage.eventLoop.makeFailedResult(Errcase.moveDirectoryFailed, "获取目标目录的 id 失败")
+            return storage.eventLoop.makeFailedResult(Errcase.moveDirectoryFailed, "获取目标目录的 id 失败", category: .internal)
         }
         
         fileIndex.$parent.id = dir.fileIndex.isRoot ? nil : superId
@@ -478,10 +476,10 @@ extension Directory {
             fileIndex.name = name
         }
         return fileIndex.update(on: storage.indexDatabase)
-            .withError(Errcase.moveDirectoryFailed, "数据库更新失败", metadata: ["path": .data(path)])
+            .withError(Errcase.moveDirectoryFailed, "数据库更新失败", metadata: ["path": .data(path)], category: .internal)
             .flatMapThrowing
-        { () throws(BscError<Errcase>) in
-            try required(throws: Errcase.moveDirectoryFailed, "未知错误", metadata: ["path": .data(path)]) {
+        { () throws(Errcase.ErrType) in
+            try required(throws: Errcase.moveDirectoryFailed, "未知错误", metadata: ["path": .data(path)], category: .inherit) {
                 try .init(from: fileIndex, parent: dir.path, storage: storage)
             }
         }

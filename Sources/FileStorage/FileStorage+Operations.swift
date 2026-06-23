@@ -62,13 +62,13 @@ public extension FileStorage {
         guard !path.isRoot else { preconditionFailure("不允许创建系统根") }
         
         return getParent(at: path, withIntermediateDirectories: createIfNeed)
-            .errCast(Errcase.createDirectoryFailed, "获取父目录失败", metadata: ["super_path": .data(path.parent)])
+            .errCast(Errcase.createDirectoryFailed, "获取父目录失败", metadata: ["super_path": .data(path.parent)], category: .inherit)
             .flatMap
         { parent in
             logger.debug("检查要创建的目录是否已经存在")
             
             return self.getChild(at: parent, name: path.last!)
-                .errCast(Errcase.createDirectoryFailed, "获取目录下的子内容失败")
+                .errCast(Errcase.createDirectoryFailed, "获取目录下的子内容失败", category: .inherit)
                 .flatMap
             { fileIndex in
                 if let existedIndex = fileIndex, existedIndex.type == .directory {
@@ -77,15 +77,15 @@ public extension FileStorage {
                     if slience {
                         return self.eventLoop.makeSucceededResult(existedIndex)
                     } else {
-                        return self.eventLoop.makeFailedResult(Errcase.createDirectoryFailed.d("目录 \"\(path)\" 已存在"))
+                        return self.eventLoop.makeFailedResult(Errcase.createDirectoryFailed.d("目录 \"\(path)\" 已存在", category: .external()))
                     }
                 } else {
                     logger.debug("要创建的目录不存在")
-                    return self.newDirIndex(parent: parent, path: path).errCast(Errcase.createDirectoryFailed, "创建目录 \"\(path)\" 失败")
+                    return self.newDirIndex(parent: parent, path: path).errCast(Errcase.createDirectoryFailed, "创建目录 \"\(path)\" 失败", category: .inherit)
                 }
             }
-        }.flatMapThrowing { fileIndex throws(BscError<Errcase>) in
-            try required(throws: Errcase.getDirectoryFailed, path.string) {
+        }.flatMapThrowing { fileIndex throws(Errcase.ErrType) in
+            try required(throws: Errcase.getDirectoryFailed, path.string, category: .inherit) {
                 try .init(from: fileIndex, parent: path.parent, storage: self)
             }
         }.map { (directory: Directory) in
@@ -108,10 +108,10 @@ public extension FileStorage {
         ])
         
         return get(at: path)
-            .errCast(Errcase.getDirectoryFailed, path.string)
+            .errCast(Errcase.getDirectoryFailed, path.string, category: .inherit)
             .flatMapThrowing
-        { fileIndex throws(BscError<Errcase>) in
-            try required(throws: Errcase.getDirectoryFailed, path.string) {
+        { fileIndex throws(Errcase.ErrType) in
+            try required(throws: Errcase.getDirectoryFailed, path.string, category: .inherit) {
                 try .init(from: fileIndex, parent: path.parent, storage: self)
             }
         }.map { (directory: Directory) in
@@ -151,13 +151,13 @@ public extension FileStorage {
         guard !path.isEmpty else { preconditionFailure("不允许空文件路径") }
         
         return getParent(at: path, withIntermediateDirectories: createIfNeed)
-            .errCast(Errcase.createFileFailed, "获取父目录失败", metadata: ["super_path": .data(path.parent)])
+            .errCast(Errcase.createFileFailed, "获取父目录失败", metadata: ["super_path": .data(path.parent)], category: .inherit)
             .flatMap
         { parent in
             logger.debug("检查要创建的文件是否已经存在")
             
             return self.getChild(at: parent, name: path.last!)
-                .errCast(Errcase.createFileFailed, "获取目录下的子内容失败")
+                .errCast(Errcase.createFileFailed, "获取目录下的子内容失败", category: .inherit)
                 .flatMap
             { fileIndex in
                 if let existedIndex = fileIndex, existedIndex.type == .file {
@@ -166,16 +166,16 @@ public extension FileStorage {
                     if slience {
                         return self.eventLoop.makeSucceededResult(existedIndex)
                     } else {
-                        return self.eventLoop.makeFailedResult(Errcase.createFileFailed.d("文件 \"\(path)\" 已存在"))
+                        return self.eventLoop.makeFailedResult(Errcase.createFileFailed.d("文件 \"\(path)\" 已存在", category: .external()))
                     }
                 } else {
                     logger.debug("要创建的文件不存在")
                     // 要创建的文件不存在，创建新文件
-                    return self.newFileIndex(parent: parent, path: path, chunkSize: chunkSize).errCast(Errcase.createFileFailed, "创建文件 \"\(path)\" 失败")
+                    return self.newFileIndex(parent: parent, path: path, chunkSize: chunkSize).errCast(Errcase.createFileFailed, "创建文件 \"\(path)\" 失败", category: .inherit)
                 }
             }
-        }.flatMapThrowing { fileIndex throws(BscError<Errcase>) in
-            try required(throws: Errcase.getFileFailed) {
+        }.flatMapThrowing { fileIndex throws(Errcase.ErrType) in
+            try required(throws: Errcase.getFileFailed, category: .inherit) {
                 try .init(from: fileIndex, parent: path.parent, storage: self)
             }
         }.map { (file: File) in
@@ -198,10 +198,10 @@ public extension FileStorage {
         ])
         
         return get(at: path)
-            .errCast(Errcase.getFileFailed)
+            .errCast(Errcase.getFileFailed, category: .inherit)
             .flatMapThrowing
-        { fileIndex throws(BscError<Errcase>) in
-            try required(throws: Errcase.getFileFailed) {
+        { fileIndex throws(Errcase.ErrType) in
+            try required(throws: Errcase.getFileFailed, category: .inherit) {
                 try .init(from: fileIndex, parent: path.parent, storage: self)
             }
         }.map { (file: File) in
@@ -221,7 +221,7 @@ extension FileStorage {
     func get(at path: StoragePath) -> EventLoopRes<FileIndex, FindEntryErrcase> {
         findEntry(at: path) {
             guard let fileIndex = $0.index else {
-                return self.eventLoop.makeFailedResult(FindEntryErrcase.entryNotExist)
+                return self.eventLoop.makeFailedResult(FindEntryErrcase.entryNotExist, category: .external())
             }
             return self.eventLoop.makeSucceededResult(fileIndex)
         }
@@ -248,14 +248,14 @@ extension FileStorage {
     ) -> EventLoopRes<FileIndex, FindEntryErrcase> {
         
         let curPath = StoragePath.root
-        var r = self.eventLoop.makeSucceededResult((self.rootDirIndex, curPath), throws: BscError<FindEntryErrcase>.self)
+        var r = self.eventLoop.makeSucceededResult((self.rootDirIndex, curPath), throws: FindEntryErrcase.ErrType.self)
         
         for component in path {
             r = r.flatMap { fileIndex, path in
                 let curPath = path + component
                 return self.getChild(at: fileIndex, name: component)
-                    .errCast(FindEntryErrcase.getChildFailed)
-                    .flatCast { action(($0, curPath, fileIndex)).errCast(FindEntryErrcase.actionFailed) }
+                    .errCast(FindEntryErrcase.getChildFailed, category: .inherit)
+                    .flatCast { action(($0, curPath, fileIndex)).errCast(FindEntryErrcase.actionFailed, category: .inherit) }
                     .flatMap
                 { fileIndex in
                     self.eventLoop.makeSucceededResult((fileIndex, curPath))
@@ -286,14 +286,14 @@ extension FileStorage {
         do {
             id = try index.getId()
         } catch {
-            return eventLoop.makeFailedResult(DatabaseErrcase.fetchIdFailed.subErr(error))
+            return eventLoop.makeFailedResult(DatabaseErrcase.fetchIdFailed.subErr(error, category: .internal))
         }
         
         return FileIndex.query(on: self.indexDatabase)
             .filter(\.$parent.$id == id)
             .filter(\.$name == name)
             .first()
-            .withError(DatabaseErrcase.queryFailed)
+            .withError(DatabaseErrcase.queryFailed, category: .internal)
     }
     
     /// 获取指定路径的父目录索引，可递归创建。
@@ -312,17 +312,17 @@ extension FileStorage {
                 if let fileIndex = index {
                     // 该级目录存在
                     guard fileIndex.type == .directory else {
-                        return self.eventLoop.makeFailedResult(FindEntryErrcase.directoryExisted, path.parent.string)
+                        return self.eventLoop.makeFailedResult(FindEntryErrcase.directoryExisted, path.parent.string, category: .external())
                     }
                     return self.eventLoop.makeSucceededResult(fileIndex)
                 } else {
                     // 该级目录不存在
                     guard createIfNeed else {
                         // 若用户指定 createIfNeed 为 false，直接抛出错误
-                        return self.eventLoop.makeFailedResult(FindEntryErrcase.directoryNotExist, path.parent.string)
+                        return self.eventLoop.makeFailedResult(FindEntryErrcase.directoryNotExist, path.parent.string, category: .external())
                     }
                     // 为该级创建新目录，因为用户指定了 createIfNeed
-                    return self.newDirIndex(parent: parent, path: path).errCast(FindEntryErrcase.databaseFailed, path.string)
+                    return self.newDirIndex(parent: parent, path: path).errCast(FindEntryErrcase.databaseFailed, path.string, category: .inherit)
                 }
             }
         }
@@ -341,7 +341,7 @@ extension FileStorage {
         new.type = .directory
         new.mimeType = nil
         new.name = path.last!
-        return new.save(on: self.indexDatabase).map { new }.withError(DatabaseErrcase.saveFailed)
+        return new.save(on: self.indexDatabase).map { new }.withError(DatabaseErrcase.saveFailed, category: .internal)
     }
     
     /// 创建新的文件索引项，并写入实际文件。
@@ -373,8 +373,8 @@ extension FileStorage {
         fileCrypto.sharedData = sharedDataGenerate(file: file)
         fileCrypto.storageKey = storageKeyGenerate(file: file)
         
-        return db.eventLoop.submitResult { () throws(BscError<DatabaseErrcase>) in
-            let permissionAttributes = try required(throws: DatabaseErrcase.fileCreateFailed, "权限信息无效") {
+        return db.eventLoop.submitResult { () throws(DatabaseErrcase.ErrType) in
+            let permissionAttributes = try required(throws: DatabaseErrcase.fileCreateFailed, "权限信息无效", category: .external(suggestions: ["请提供有效的权限信息"])) {
                 try self.filePermission?.attributes.get()
             } ?? [:]
             
@@ -385,14 +385,14 @@ extension FileStorage {
                     attributes: permissionAttributes
                 )
             else {
-                throw DatabaseErrcase.fileCreateFailed.d("未知原因")
+                throw DatabaseErrcase.fileCreateFailed.d("未知原因", category: .inherit)
             }
         }.flatMap {
             self.db.transaction { db in
                 file.save(on: db).flatMap {
                     fileCrypto.save(on: db).map { file }
                 }
-            }.withError(DatabaseErrcase.saveFailed)
+            }.withError(DatabaseErrcase.saveFailed, category: .internal)
         }
         
         func saltGenerate() -> Base64String {

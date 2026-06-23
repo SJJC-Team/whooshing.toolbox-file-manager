@@ -16,7 +16,7 @@ public protocol FileContentHandler: Sendable {
     /// 异步关闭文件资源。
     ///
     /// - Throws: 关闭操作失败时抛出带有文件错误类型的错误。
-    func close() async throws(BscError<File.Errcase>)
+    func close() async throws(File.Errcase.ErrType)
 }
 
 extension __FileContentHandler {
@@ -53,12 +53,12 @@ extension __FileContentHandler {
     }
     
     @inlinable
-    func close() async throws(BscError<File.Errcase>) {
+    func close() async throws(File.Errcase.ErrType) {
         do {
             logger.info("文件操作子关闭成功")
             try await fileHandler.close()
         } catch {
-            throw File.Errcase.closeFileFailed.d("\(storage.storagePath)/\(fileCrypto.storageKey).\(storage.fileExtension)").subErr(error)
+            throw File.Errcase.closeFileFailed.d("\(storage.storagePath)/\(fileCrypto.storageKey).\(storage.fileExtension)", category: .internal).subErr(error)
         }
     }
 }

@@ -197,11 +197,11 @@ public struct File: StorageEntry, Sendable {
         from index: FileIndex,
         parent: StoragePath,
         storage: FileStorage
-    ) throws(BscError<Errcase>) {
-        guard index.type == .file else { throw Errcase.getFileFailed.d("目标并非是一个文件，而是 \(index.type)") }
-        guard let mimeType = index.mimeType else { throw Errcase.getFileFailed.d("文件 mime-type 未找到") }
+    ) throws(Errcase.ErrType) {
+        guard index.type == .file else { throw Errcase.getFileFailed.d("目标并非是一个文件", category: .external(suggestions: ["请指定一个文件路径"])).metadata(["type": .data(index.type.rawValue)]) }
+        guard let mimeType = index.mimeType else { throw Errcase.getFileFailed.d("文件 mime-type 未找到", category: .external(suggestions: ["请指定文件的 mime-type"])) }
         
-        self.id = try required(throws: Errcase.getFileFailed, "获取文件 ID 失败") {
+        self.id = try required(throws: Errcase.getFileFailed, "获取文件 ID 失败", category: .internal) {
             try index.requireID()
         }
         
@@ -223,7 +223,7 @@ public extension File {
     @inlinable
     func withReader<T>(
         _ action: @escaping @Sendable (FileReader) async throws -> T
-    ) async throws(BscError<Errcase>) -> T where T: Sendable {
+    ) async throws(Errcase.ErrType) -> T where T: Sendable {
         let reader = try await self.__openForRead()
         do {
             let res = try await action(reader)
@@ -231,7 +231,7 @@ public extension File {
             return res
         } catch {
             try? await reader.close()
-            throw Errcase.openFileFailed.subErr(error)
+            throw Errcase.openFileFailed.subErr(error, category: .inherit)
         }
     }
     
@@ -243,7 +243,7 @@ public extension File {
     @inlinable
     func withWriter<T>(
         _ action: @escaping @Sendable (FileWriter) async throws -> T
-    ) async throws(BscError<Errcase>) -> T where T: Sendable {
+    ) async throws(Errcase.ErrType) -> T where T: Sendable {
         let writer = try await self.__openForWrite()
         do {
             let res = try await action(writer)
@@ -251,7 +251,7 @@ public extension File {
             return res
         } catch {
             try? await writer.close()
-            throw Errcase.openFileFailed.subErr(error)
+            throw Errcase.openFileFailed.subErr(error, category: .inherit)
         }
     }
     
@@ -263,7 +263,7 @@ public extension File {
     @inlinable
     func withReadWriter<T>(
         _ action: @escaping @Sendable (FileReadWriter) async throws -> T
-    ) async throws(BscError<Errcase>) -> T where T: Sendable {
+    ) async throws(Errcase.ErrType) -> T where T: Sendable {
         let readWriter = try await self.__openForReadAndWrite()
         do {
             let res = try await action(readWriter)
@@ -271,7 +271,7 @@ public extension File {
             return res
         } catch {
             try? await readWriter.close()
-            throw Errcase.openFileFailed.subErr(error)
+            throw Errcase.openFileFailed.subErr(error, category: .inherit)
         }
     }
 }
@@ -298,7 +298,7 @@ public extension File {
     ///     throw error
     /// }
     /// ```
-    func openForRead() async throws(BscError<Errcase>) -> FileReader {
+    func openForRead() async throws(Errcase.ErrType) -> FileReader {
         try await __openForRead()
     }
     
@@ -323,7 +323,7 @@ public extension File {
     ///     throw error
     /// }
     /// ```
-    func openForWrite() async throws(BscError<Errcase>) -> FileWriter {
+    func openForWrite() async throws(Errcase.ErrType) -> FileWriter {
         try await __openForWrite()
     }
     
@@ -348,20 +348,20 @@ public extension File {
     ///     throw error
     /// }
     /// ```
-    func openForReadAndWrite() async throws(BscError<Errcase>) -> FileReadWriter {
+    func openForReadAndWrite() async throws(Errcase.ErrType) -> FileReadWriter {
         try await __openForReadAndWrite()
     }
 }
 
 extension File {
     @usableFromInline
-    func __openForRead() async throws(BscError<Errcase>) -> FileReader {
+    func __openForRead() async throws(Errcase.ErrType) -> FileReader {
         let logger = storage.getOperationLogger()
         logger.info("执行 打开文件(只读) 操作", metadata: ["path": .data(path)])
-        let (fileCrypto, key, filePath) = try await logger.required(throws: Errcase.openFileFailed, "获取文件信息失败") {
+        let (fileCrypto, key, filePath) = try await logger.required(throws: Errcase.openFileFailed, "获取文件信息失败", category: .inherit) {
             try await makeFileHandleParas()
         }
-        let fileHandler = try await logger.required(throws: File.Errcase.openFileFailed) {
+        let fileHandler = try await logger.required(throws: File.Errcase.openFileFailed, category: .inherit) {
             try await FileSystem.shared.openFile(forReadingAt: filePath, options: .init())
         }
         return Reader(
@@ -377,13 +377,13 @@ extension File {
     }
     
     @usableFromInline
-    func __openForWrite() async throws(BscError<Errcase>) -> FileWriter {
+    func __openForWrite() async throws(Errcase.ErrType) -> FileWriter {
         let logger = storage.getOperationLogger()
         logger.info("执行 打开文件(只写) 操作", metadata: ["path": .data(path)])
-        let (fileCrypto, key, filePath) = try await logger.required(throws: Errcase.openFileFailed, "获取文件信息失败") {
+        let (fileCrypto, key, filePath) = try await logger.required(throws: Errcase.openFileFailed, "获取文件信息失败", category: .inherit) {
             try await makeFileHandleParas()
         }
-        let fileHandler = try await logger.required(throws: File.Errcase.openFileFailed) {
+        let fileHandler = try await logger.required(throws: File.Errcase.openFileFailed, category: .inherit) {
             try await FileSystem.shared.openFile(forWritingAt: filePath, options: .modifyFile(createIfNecessary: false))
         }
         return Writer(
@@ -399,13 +399,13 @@ extension File {
     }
     
     @usableFromInline
-    func __openForReadAndWrite() async throws(BscError<Errcase>) -> FileReadWriter {
+    func __openForReadAndWrite() async throws(Errcase.ErrType) -> FileReadWriter {
         let logger = storage.getOperationLogger()
         logger.info("执行 打开文件(读写) 操作", metadata: ["path": .data(path)])
-        let (fileCrypto, key, filePath) = try await logger.required(throws: Errcase.openFileFailed, "获取文件信息失败") {
+        let (fileCrypto, key, filePath) = try await logger.required(throws: Errcase.openFileFailed, "获取文件信息失败", category: .inherit) {
             try await makeFileHandleParas()
         }
-        let fileHandler = try await logger.required(throws: File.Errcase.openFileFailed) {
+        let fileHandler = try await logger.required(throws: File.Errcase.openFileFailed, category: .inherit) {
             try await FileSystem.shared.openFile(forReadingAndWritingAt: filePath, options: .modifyFile(createIfNecessary: false))
         }
         return ReaderAndWriter(
@@ -463,19 +463,19 @@ public extension File {
             return storage.db.eventLoop.bridge {
                 try await getRealFilePath(withDeleted: true).0
             }
-            .withError(Errcase.deleteFileFailed, "获取文件路径失败", metadata: ["path": .data(path)])
-            .flatMap { filePath in
+            .withError(Errcase.deleteFileFailed, "获取文件路径失败", metadata: ["path": .data(path)], category: .inherit)
+            .flatMap { (filePath: FilePath) in
                 fileIndex.delete(force: true, on: storage.db)
                     .map {
                         logger.debug("数据库记录删除成功", metadata: ["result": .stringConvertible(filePath)])
                         return filePath
                     }
-                    .withError(Errcase.deleteFileFailed, "数据库删除记录失败", metadata: ["path": .data(path)])
+                    .withError(Errcase.deleteFileFailed, "数据库删除记录失败", metadata: ["path": .data(path)], category: .inherit)
             }.flatMap { filePath in
                 storage.db.eventLoop.bridge {
                     try await FileSystem.shared.removeItem(at: filePath)
                 }
-                .withError(Errcase.deleteFileFailed, "从文件系统删除加密文件失败", metadata: ["path": .data(path)])
+                .withError(Errcase.deleteFileFailed, "从文件系统删除加密文件失败", metadata: ["path": .data(path)], category: .inherit)
                 .map { logger.debug("加密文件删除成功") }
             }.logIfFail(logger: logger)
         } else {
@@ -486,18 +486,18 @@ public extension File {
             do {
                 fileId = try fileIndex.requireID()
             } catch {
-                return storage.db.eventLoop.makeFailedResult(Errcase.deleteFileFailed.d("获取文件 ID 失败").subErr(error)).logIfFail(logger: logger)
+                return storage.db.eventLoop.makeFailedResult(Errcase.deleteFileFailed.d("获取文件 ID 失败", category: .internal).subErr(error)).logIfFail(logger: logger)
             }
             
             return FileCrypto.query(on: storage.db)
                 .filter(\.$id == fileId)
                 .delete(force: false)
-                .withError(Errcase.deleteFileFailed, "数据库 \(FileCrypto.name) 软删除失败", metadata: ["path": .data(path)])
+                .withError(Errcase.deleteFileFailed, "数据库 \(FileCrypto.name) 软删除失败", metadata: ["path": .data(path)], category: .internal)
                 .map { logger.debug("数据库 \(FileCrypto.name) 软删除完成") }
                 .flatMap
             {
                 fileIndex.delete(force: false, on: storage.db)
-                    .withError(Errcase.deleteFileFailed, "数据库 \(FileIndex.name) 软删除记录失败", metadata: ["path": .data(path)])
+                    .withError(Errcase.deleteFileFailed, "数据库 \(FileIndex.name) 软删除记录失败", metadata: ["path": .data(path)], category: .internal)
                     .map { logger.debug("数据库 \(FileIndex.name) 软删除完成") }
             }.map {
                 logger.info("文件删除完成")
@@ -519,10 +519,10 @@ public extension File {
         fileIndex.name = name
         fileIndex.mimeType = name.fileExtension == nil ? .unknow : .init(fileExtension: name.fileExtension!)
         return fileIndex.update(on: storage.indexDatabase)
-            .withError(Errcase.renameFileFailed, "数据库更新失败", metadata: ["path": .data(path)])
+            .withError(Errcase.renameFileFailed, "数据库更新失败", metadata: ["path": .data(path)], category: .internal)
             .flatMapThrowing
-        { () throws(BscError<Errcase>) in
-            try required(throws: Errcase.renameFileFailed, "未知错误", metadata: ["path": .data(path)]) {
+        { () throws(Errcase.ErrType) in
+            try required(throws: Errcase.renameFileFailed, "未知错误", metadata: ["path": .data(path)], category: .inherit) {
                 try .init(from: fileIndex, parent: self.path.parent, storage: storage)
             }
         }.map { (file: File) in
@@ -549,10 +549,10 @@ public extension File {
             fileIndex.name = name
         }
         return fileIndex.update(on: storage.indexDatabase)
-            .withError(Errcase.moveFileFailed, "数据库更新失败", metadata: ["path": .data(path)])
+            .withError(Errcase.moveFileFailed, "数据库更新失败", metadata: ["path": .data(path)], category: .internal)
             .flatMapThrowing
-        { () throws(BscError<Errcase>) in
-            try required(throws: Errcase.moveFileFailed, "未知错误", metadata: ["path": .data(path)]) {
+        { () throws(Errcase.ErrType) in
+            try required(throws: Errcase.moveFileFailed, "未知错误", metadata: ["path": .data(path)], category: .inherit) {
                 try .init(from: fileIndex, parent: self.path.parent, storage: storage)
             }
         }.map { (file: File) in
@@ -580,7 +580,7 @@ extension File {
     /// 获取加密文件的实际路径与关联的 FileCrypto 对象。
     /// - Parameter withDeleted: 是否允许从软删除记录中读取。
     @usableFromInline
-    func getRealFilePath(withDeleted: Bool = false) async throws(BscError<FileParaFetchErrcase>) -> (FilePath, FileCrypto) {
+    func getRealFilePath(withDeleted: Bool = false) async throws(FileParaFetchErrcase.ErrType) -> (FilePath, FileCrypto) {
         
         let qc: QueryBuilder<FileCrypto>
         
@@ -595,10 +595,10 @@ extension File {
         
         guard
             let fileCrypto = try await qc.first()
-                .withError(FileParaFetchErrcase.databaseFailed, metadata: ["path": .data(path)])
+                .withError(FileParaFetchErrcase.databaseFailed, metadata: ["path": .data(path)], category: .internal)
                 .get()
         else {
-            throw FileParaFetchErrcase.fileNotExist.d(self.path.string)
+            throw FileParaFetchErrcase.fileNotExist.d(self.path.string, category: .external(suggestions: ["请指定一个存在的文件路径"]))
         }
          
         return (
@@ -609,13 +609,13 @@ extension File {
     
     /// 构造打开加密文件所需的参数：文件路径、FileCrypto 和派生密钥。
     @inlinable
-    func makeFileHandleParas() async throws(BscError<FileParaFetchErrcase>) -> (
+    func makeFileHandleParas() async throws(FileParaFetchErrcase.ErrType) -> (
         FileCrypto, Crypto.Symm.Key, FilePath
     ) {
         let (filePath, fileCrypto) = try await getRealFilePath()
         
         // 创建派生密钥
-        let key = try required(throws: FileParaFetchErrcase.keyDeriveFailed, metadata: ["path": .data(path)]) {
+        let key = try required(throws: FileParaFetchErrcase.keyDeriveFailed, metadata: ["path": .data(path)], category: .internal) {
             try self.storage.masterKey.derive(salt: fileCrypto.salt, info: fileCrypto.sharedData).get()
         }
         

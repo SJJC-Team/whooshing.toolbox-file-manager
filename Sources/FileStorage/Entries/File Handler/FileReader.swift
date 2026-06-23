@@ -111,7 +111,7 @@ extension __FileReader {
         
         let channel = read(part: part)
         
-        return try await logger.required(throws: File.Errcase.readFileFailed){
+        return try await logger.required(throws: File.Errcase.readFileFailed, category: .inherit){
             var res = Data()
             for try await chunk in channel.chunkedChannel(fileCrypto.chunkSize) {
                 res += chunk
@@ -130,7 +130,7 @@ extension __FileReader {
         
         let channel = read(part: part)
         
-        try await logger.required(throws: File.Errcase.readFileFailed) {
+        try await logger.required(throws: File.Errcase.readFileFailed, category: .inherit) {
             for try await chunk in channel.chunkedChannel(fileCrypto.chunkSize) {
                 try await callback(chunk).get()
             }
@@ -148,7 +148,7 @@ extension __FileReader {
         
         let channel = read(part: part)
         
-        try await logger.required(throws: File.Errcase.readFileFailed) {
+        try await logger.required(throws: File.Errcase.readFileFailed, category: .inherit) {
             for try await chunk in channel {
                 try await callback(chunk)
             }
@@ -177,7 +177,7 @@ extension __FileReader {
         part readPart: ReadPart,
         reader: AsyncThrowingChannel<Data, Error>,
         logger: Logger
-    ) async throws(BscError<File.Errcase>) {
+    ) async throws(File.Errcase.ErrType) {
         // 准备读取的范围
         let readRange: Range<Int64>
         
@@ -190,13 +190,13 @@ extension __FileReader {
             readRange = r
         }
         
-        let fileId = try required(throws: File.Errcase.readFileFailed, "获取文件 ID 失败，\(filePath)") {
+        let fileId = try required(throws: File.Errcase.readFileFailed, "获取文件 ID 失败，\(filePath)", category: .internal) {
             try fileIndex.requireID()
         }
         
         logger.debug("成功取得文件 ID", metadata: ["id": .stringConvertible(fileId)])
         
-        let fileParts = try await required(throws: File.Errcase.readFileFailed, "数据库查询文件数据块时失败，\(filePath)") {
+        let fileParts = try await required(throws: File.Errcase.readFileFailed, "数据库查询文件数据块时失败，\(filePath)", category: .internal) {
             try await FilePart.query(on: storage.db)
                 .filter(\.$fileIndex.$id == fileId)
                 .filter(\.$byteStart < readRange.upperBound)
@@ -218,7 +218,7 @@ extension __FileReader {
             
             if i == 0 {
                 logger.debug("处理首个数据块")
-                let res = try required(throws: File.Errcase.readFileFailed, "头指针落点分析失败，\(filePath)") {
+                let res = try required(throws: File.Errcase.readFileFailed, "头指针落点分析失败，\(filePath)", category: .inherit) {
                     try ChunkHelpers.index(
                         readRange.lowerBound - part.byteStart + part.byteHeadIgnore,
                         in: .init(.chunk(fileCrypto.chunkSize, total: partLength + part.byteHeadIgnore + part.byteTailIgnore)),
@@ -234,7 +234,7 @@ extension __FileReader {
             
             if i == fileParts.count - 1 {
                 logger.debug("处理末尾数据块")
-                let res = try required(throws: File.Errcase.readFileFailed, "尾指针落点分析失败，\(filePath)") {
+                let res = try required(throws: File.Errcase.readFileFailed, "尾指针落点分析失败，\(filePath)", category: .inherit) {
                     try ChunkHelpers.index(
                         readRange.upperBound - part.byteStart + part.byteHeadIgnore,
                         in: .init(.chunk(fileCrypto.chunkSize, total: partLength + part.byteHeadIgnore + part.byteTailIgnore)),
@@ -290,7 +290,7 @@ extension __FileReader {
                 "cur_reading_part_encrypted_length": .stringConvertible(curReadingPartEncryptedLength)
             ])
             
-            try await required(throws: File.Errcase.readFileFailed, "未知错误，\(filePath)") {
+            try await required(throws: File.Errcase.readFileFailed, "未知错误，\(filePath)", category: .inherit) {
                 var curPartSize = 0
                 var curEncryptedSize = chunkReadStartOffset
                 var curChunkIndex = 0

@@ -6,7 +6,7 @@ public extension FileStorage {
         at path: StoragePath,
         withIntermediateDirectories createIfNeed: Bool = false,
         slience: Bool = false
-    ) async throws(BscError<Errcase>) -> Directory {
+    ) async throws(Errcase.ErrType) -> Directory {
         try await self.createDirectory(
             at: path,
             withIntermediateDirectories: createIfNeed,
@@ -17,7 +17,7 @@ public extension FileStorage {
     @inlinable
     func getDirectory(
         at path: StoragePath
-    ) async throws(BscError<Errcase>) -> Directory {
+    ) async throws(Errcase.ErrType) -> Directory {
         try await self.getDirectory(at: path).get()
     }
     
@@ -27,7 +27,7 @@ public extension FileStorage {
         chunkSize: Int64 = 65535,
         withIntermediateDirectories createIfNeed: Bool = false,
         slience: Bool = false
-    ) async throws(BscError<Errcase>) -> File {
+    ) async throws(Errcase.ErrType) -> File {
         try await self.createFile(
             at: path,
             chunkSize: chunkSize,
@@ -39,7 +39,7 @@ public extension FileStorage {
     @inlinable
     func getFile(
         at path: StoragePath
-    ) async throws(BscError<Errcase>) -> File {
+    ) async throws(Errcase.ErrType) -> File {
         try await self.getFile(at: path).get()
     }
 }

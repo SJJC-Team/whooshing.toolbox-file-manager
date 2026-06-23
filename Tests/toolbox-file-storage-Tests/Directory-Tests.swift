@@ -76,7 +76,7 @@ struct DirectoryTests {
         #expect(newDir.name == dirTest.name)
         #expect(newDir.path == dirTest.path)
         
-        await #expect(throws: BscError<FileStorage.Errcase>.self) {
+        await #expect(throws: FileStorage.Errcase.ErrType.self) {
             try await storage.getDirectory(at: Self.originDir)
         }
     }
@@ -218,7 +218,7 @@ struct DirectoryTests {
         for i in (2...Self.testDir.count).reversed() {
             let p = StoragePath(components: .init(Self.testDir.components[0..<i]))
             
-            await #expect(throws: BscError<FileStorage.Errcase>.self) {
+            await #expect(throws: FileStorage.Errcase.ErrType.self) {
                 try await storage.getDirectory(at: p)
             }
         }
@@ -230,7 +230,7 @@ struct DirectoryTests {
         
         try await storage.rootDir.empty(force: true)
         
-        await #expect(throws: BscError<FileStorage.Errcase>.self) {
+        await #expect(throws: FileStorage.Errcase.ErrType.self) {
             try await storage.getDirectory(at: .init(stringLiteral: Self.testDir.first!))
         }
     }

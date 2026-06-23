@@ -36,7 +36,7 @@ struct EntryBasicsTests {
         #expect(file.size == fileTest.size)
         #expect(fileTest.isExist())
         
-        await #expect(throws: BscError<File.Errcase>.self) {
+        await #expect(throws: File.Errcase.ErrType.self) {
             try await storage.createFile(at: testPath)
         }
         
@@ -44,7 +44,7 @@ struct EntryBasicsTests {
         
         #expect(!file.isExist())
         
-        await #expect(throws: BscError<FileStorage.Errcase>.self) {
+        await #expect(throws: FileStorage.Errcase.ErrType.self) {
             try await storage.getFile(at: testPath)
         }
     }
@@ -78,7 +78,7 @@ struct EntryBasicsTests {
         
         #expect(!file.isExist())
         
-        await #expect(throws: BscError<FileStorage.Errcase>.self) {
+        await #expect(throws: FileStorage.Errcase.ErrType.self) {
             try await storage.getFile(at: testPath)
         }
         
@@ -112,7 +112,7 @@ struct EntryBasicsTests {
         
         #expect(!file.isExist())
         
-        await #expect(throws: BscError<FileStorage.Errcase>.self) {
+        await #expect(throws: FileStorage.Errcase.ErrType.self) {
             try await storage.getFile(at: testPath)
         }
     }
@@ -146,7 +146,7 @@ struct EntryBasicsTests {
         
         #expect(!file.isExist())
         
-        await #expect(throws: BscError<FileStorage.Errcase>.self) {
+        await #expect(throws: FileStorage.Errcase.ErrType.self) {
             try await storage.getFile(at: testPath)
         }
         
@@ -172,7 +172,7 @@ struct EntryBasicsTests {
             
             #expect(!dir.isExist())
             
-            await #expect(throws: BscError<FileStorage.Errcase>.self) {
+            await #expect(throws: FileStorage.Errcase.ErrType.self) {
                 try await storage.getDirectory(at: p)
             }
         }
@@ -184,7 +184,7 @@ struct EntryBasicsTests {
         
         let testPath: StoragePath = "testing/unknow/example.txt"
         
-        await #expect(throws: BscError<FileStorage.Errcase>.self) {
+        await #expect(throws: FileStorage.Errcase.ErrType.self) {
             try await storage.createFile(at: testPath, withIntermediateDirectories: false)
         }
     }
@@ -208,7 +208,7 @@ struct EntryBasicsTests {
         #expect(dir.path == dirTest.path)
         #expect(dirTest.isExist())
         
-        await #expect(throws: BscError<File.Errcase>.self) {
+        await #expect(throws: File.Errcase.ErrType.self) {
             try await storage.createDirectory(at: testPath)
         }
         
@@ -216,7 +216,7 @@ struct EntryBasicsTests {
         
         #expect(!dir.isExist())
         
-        await #expect(throws: BscError<FileStorage.Errcase>.self) {
+        await #expect(throws: FileStorage.Errcase.ErrType.self) {
             try await storage.getDirectory(at: testPath)
         }
     }
@@ -226,7 +226,7 @@ struct EntryBasicsTests {
         let storage = try await TestingShared.getFileStorage()
         
         let testPath: StoragePath = "testing_directory/0/1/2/3/4/5"
-        await #expect(throws: BscError<FileStorage.Errcase>.self) {
+        await #expect(throws: FileStorage.Errcase.ErrType.self) {
             try await storage.createDirectory(at: testPath)
         }
     }
@@ -254,7 +254,7 @@ struct EntryBasicsTests {
         
         #expect(!dir.isExist())
         
-        await #expect(throws: BscError<FileStorage.Errcase>.self) {
+        await #expect(throws: FileStorage.Errcase.ErrType.self) {
             try await storage.getDirectory(at: testPath)
         }
     }
@@ -278,7 +278,7 @@ struct EntryBasicsTests {
             
             #expect(!dir.isExist())
             
-            await #expect(throws: BscError<FileStorage.Errcase>.self) {
+            await #expect(throws: FileStorage.Errcase.ErrType.self) {
                 try await storage.getDirectory(at: p)
             }
         }

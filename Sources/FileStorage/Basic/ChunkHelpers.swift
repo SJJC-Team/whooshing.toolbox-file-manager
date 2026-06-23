@@ -81,15 +81,15 @@ extension ChunkHelpers {
     /// ```
     ///
     @inlinable
-    static func rangeIntersection(_ range: Range<Int64>, in chunks: BufferSpace, offset: Int64) throws(BscError<RangeErrcase>) -> IntersectionResult {
+    static func rangeIntersection(_ range: Range<Int64>, in chunks: BufferSpace, offset: Int64) throws(RangeErrcase.ErrType) -> IntersectionResult {
         
         guard chunks.count > 0 || range.lowerBound > 0 else {
             return .init(rangeOffset: 0, rangeInIntersection: true, chunkIndex: 0, chunkBegin: 0, chunks: [])
         }
         
         if let (chunkSize, total) = chunks.unifiedChunk {
-            guard total >= range.lowerBound, 0 <= range.lowerBound else { throw .init(.rangeBeginIndexNotFound, "预期的最大起始边界为 \(total)，却得到 \(range.lowerBound)") }
-            guard total >= range.upperBound, 0 <= range.upperBound else { throw .init(.rangeSizeExceed, "预期的结束边界为 \(total)，却得到 \(range.upperBound)") }
+            guard total >= range.lowerBound, 0 <= range.lowerBound else { throw .init(.rangeBeginIndexNotFound, "预期的最大起始边界为 \(total)，却得到 \(range.lowerBound)", category: .external()) }
+            guard total >= range.upperBound, 0 <= range.upperBound else { throw .init(.rangeSizeExceed, "预期的结束边界为 \(total)，却得到 \(range.upperBound)", category: .external()) }
             
             if range.lowerBound == total {
                 // 表示起点正好在结束位置，表示追加
@@ -171,7 +171,7 @@ extension ChunkHelpers {
             }
         }
         
-        guard record == false else { throw .init(.rangeSizeExceed, "预期的结束边界为 \(chunks.reduce(0, +))，却得到 \(range.upperBound)") }
+        guard record == false else { throw .init(.rangeSizeExceed, "预期的结束边界为 \(chunks.reduce(0, +))，却得到 \(range.upperBound)", category: .external()) }
         
         if rangeBegin == -1 && curChunkIndex == range.lowerBound && range.isEmpty {
             // 表示起点正好在结束位置，表示追加
@@ -184,7 +184,7 @@ extension ChunkHelpers {
             )
         }
         
-        guard rangeBegin != -1 else { throw .init(.rangeBeginIndexNotFound, "预期的最大起始边界为 \(chunks.reduce(0, +))，却得到 \(range.lowerBound)") }
+        guard rangeBegin != -1 else { throw .init(.rangeBeginIndexNotFound, "预期的最大起始边界为 \(chunks.reduce(0, +))，却得到 \(range.lowerBound)", category: .external()) }
         
         return .init(
             rangeOffset: rangeBegin,
@@ -197,14 +197,14 @@ extension ChunkHelpers {
     
     /// 数据落点分析算法
     @inlinable
-    static func rangeIntersection(_ range: ClosedRange<Int64>, in chunks: BufferSpace, offset: Int64) throws(BscError<RangeErrcase>) -> IntersectionResult {
+    static func rangeIntersection(_ range: ClosedRange<Int64>, in chunks: BufferSpace, offset: Int64) throws(RangeErrcase.ErrType) -> IntersectionResult {
         try rangeIntersection(.init(range), in: chunks, offset: offset)
     }
     
     /// 从数据块寻址算法
     @inlinable
-    static func index(_ index: Int64, in buffer: BufferSpace, offset: Int64) throws(BscError<IndexErrcase>) -> IntersectionResult {
-        let intersection = try required(throws: BscError<IndexErrcase>(.intersectionFailed)) {
+    static func index(_ index: Int64, in buffer: BufferSpace, offset: Int64) throws(IndexErrcase.ErrType) -> IntersectionResult {
+        let intersection = try required(throws: IndexErrcase.ErrType(.intersectionFailed, category: .inherit)) {
             try rangeIntersection(index..<index, in: buffer, offset: offset)
         }
         return intersection
@@ -340,9 +340,9 @@ extension ChunkHelpers {
     ///
     /// ```
     @inlinable
-    static func replacementReseparation(_ chunks: BufferSpace, at begin: Int64, in originChunks: BufferSpace, offset: Int64) throws(BscError<RangeErrcase>) -> ReseparationResult {
+    static func replacementReseparation(_ chunks: BufferSpace, at begin: Int64, in originChunks: BufferSpace, offset: Int64) throws(RangeErrcase.ErrType) -> ReseparationResult {
         guard begin >= 0 else {
-            throw .init(.rangeSizeInvalid, "起始索引值无效，预期 >= 0，但得到 \(begin)")
+            throw .init(.rangeSizeInvalid, "起始索引值无效，预期 >= 0，但得到 \(begin)", category: .external())
         }
         
         guard originChunks.count > 0 || begin > 0 else {
@@ -350,7 +350,7 @@ extension ChunkHelpers {
         }
         
         guard originChunks.first == nil || begin <= (originChunks.first! - offset), begin >= 0 else {
-            throw .init(.rangeBeginIndexNotFound, "预期的最大起始边界为 0..<\(originChunks.first! - offset)，却得到 \(begin)")
+            throw .init(.rangeBeginIndexNotFound, "预期的最大起始边界为 0..<\(originChunks.first! - offset)，却得到 \(begin)", category: .external())
         }
         
         var stackedLength = begin
@@ -368,7 +368,7 @@ extension ChunkHelpers {
                     if i == originChunks.count - 1 {
                         break
                     } else {
-                        throw .init(.rangeSizeTooSmall)
+                        throw .init(.rangeSizeTooSmall, category: .external())
                     }
                 }
                 
@@ -460,10 +460,10 @@ extension ChunkHelpers {
     ///
     /// ```
     @inlinable
-    static func insertionReseparation(_ chunks: BufferSpace, at begin: Int64, in originChunk: Int64, offset: Int64) throws(BscError<RangeErrcase>) -> ReseparationResult {
+    static func insertionReseparation(_ chunks: BufferSpace, at begin: Int64, in originChunk: Int64, offset: Int64) throws(RangeErrcase.ErrType) -> ReseparationResult {
         
         guard begin >= 0, originChunk >= 0 else {
-            throw .init(.rangeSizeInvalid, "输入参数无效，预期 >= 0，但得到 \(begin) 与 \(originChunk)")
+            throw .init(.rangeSizeInvalid, "输入参数无效，预期 >= 0，但得到 \(begin) 与 \(originChunk)", category: .external())
         }
         
         guard originChunk > 0 || begin > 0 else {
@@ -471,7 +471,7 @@ extension ChunkHelpers {
         }
         
         guard begin <= (originChunk - offset), begin >= 0 else {
-            throw .init(.rangeBeginIndexNotFound, "预期的最大起始边界为 0..<\(originChunk - offset)，却得到 \(begin)")
+            throw .init(.rangeBeginIndexNotFound, "预期的最大起始边界为 0..<\(originChunk - offset)，却得到 \(begin)", category: .external())
         }
         
         let tailSize = originChunk - offset - begin
@@ -508,16 +508,16 @@ extension ChunkHelpers {
         in part: FilePart,
         fileCrypto: FileCrypto,
         indexResult: ChunkHelpers.IntersectionResult
-    ) throws(BscError<FileWriterError>) -> FilePart? {
+    ) throws(FileWriterError.ErrType) -> FilePart? {
         if indexResult.rangeInIntersection && indexResult.chunkIndex == 0 && indexResult.rangeOffset == 0 {
             return nil
         }
         
         guard let chunkSize = indexResult.chunks.first else {
-            throw FileWriterError.separateFilePartFailed.d("落点判断失败，没有得到 chunk 位置")
+            throw FileWriterError.separateFilePartFailed.d("落点判断失败，没有得到 chunk 位置", category: .internal)
         }
         
-        let fileId = try required(throws: FileWriterError.separateFilePartFailed, "取得文件 ID 失败") {
+        let fileId = try required(throws: FileWriterError.separateFilePartFailed, "取得文件 ID 失败", category: .internal) {
             try fileCrypto.requireID()
         }
         
