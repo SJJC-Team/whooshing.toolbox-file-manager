@@ -1,5 +1,5 @@
 {
-  "originHash" : "b721889ef073dea5522092ff18a4d118aa24351070a7485481c18244809651ce",
+  "originHash" : "634e7cc0f4a16b9f9ebd89fe8915a607cd1fff6208cf5f09f08c4a426977cb23",
   "pins" : [
     {
       "identity" : "anycodable",
@@ -35,6 +35,15 @@
       "state" : {
         "revision" : "32ad16dfc7677b927b225595ed18f3debb32f577",
         "version" : "4.16.0"
+      }
+    },
+    {
+      "identity" : "fluent",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/vapor/fluent.git",
+      "state" : {
+        "revision" : "2fe9e36daf4bdb5edcf193e0d0806ba2074d2864",
+        "version" : "4.13.0"
       }
     },
     {
@@ -308,30 +317,21 @@
       }
     },
     {
+      "identity" : "vapor",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/vapor/vapor.git",
+      "state" : {
+        "revision" : "748ae8432a33e0965bbf0351fedd4e915e7f460c",
+        "version" : "4.122.0"
+      }
+    },
+    {
       "identity" : "websocket-kit",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/vapor/websocket-kit.git",
       "state" : {
         "revision" : "90bbbdab3ede12c803cfbe91646f291c092517a3",
         "version" : "2.16.2"
-      }
-    },
-    {
-      "identity" : "whooshing-fluent",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/whooshing-workshop/whooshing-fluent.git",
-      "state" : {
-        "revision" : "1474c762fe6661dcdf561b4f4f3f18c666ab68d1",
-        "version" : "1.0.3"
-      }
-    },
-    {
-      "identity" : "whooshing-vapor",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/whooshing-workshop/whooshing-vapor.git",
-      "state" : {
-        "revision" : "1c2e4df37347d91032627bb163f4bf51c0a427e7",
-        "version" : "1.1.5"
       }
     },
     {
@@ -348,8 +348,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/whooshing-workshop/whooshing.toolbox-pgsql.git",
       "state" : {
-        "revision" : "53a97075e0369a981f767f80642b7394191b2765",
-        "version" : "1.1.2"
+        "revision" : "603f7f21a503447978704ffc6dd565b776596454",
+        "version" : "1.1.3"
       }
     }
   ],
