@@ -42,7 +42,7 @@
 在你的 Package.swift 加入：
 
 ``` swift
-.package(url: "https://github.com/whooshing-workshop/whooshing.toolbox-file-storage", from: "1.1.0")
+.package(url: "https://github.com/whooshing-workshop/whooshing.toolbox-file-storage.git", from: "1.1.0")
 ```
 
 在依赖模块中引入:
@@ -103,6 +103,8 @@ let storage = try await FileStorage.new(
     dbConfigure: postgresConfigure,
     masterKey: key,
     logger: .init(label: "FileStorage-Testing"),
+    fileExtension: FileStorage.DefaultCryptoFileExtension,  // 可选，加密文件的后缀名，默认 "wooclassified"
+    filePermission: nil,                                    // 可选，加密文件的 Unix 权限(owner / group / rwx)，nil 表示沿用默认
     debuging: .init(tdeEncrypt: false)  // 仅仅用在调试阶段，生产环境应当移除
 ).get()
 ```
@@ -195,7 +197,7 @@ print(renamedDir.path)          // <-- print: testing/images
 let destination: Directory = ...
 
 // 将目录移动到目标目录下
-let movedDir = renamedDir.move(to: destination)
+let movedDir = try await renamedDir.move(to: destination)
 
 print(movedDir.path)            // <-- print: <目标目录的路径>/images
 ```
@@ -272,7 +274,7 @@ print(renamedFile.path)         // <-- print: testing/image.png
 let destination: Directory = ...
 
 // 将文件移动到目标目录下
-let movedFile = renamedFile.move(to: destination)
+let movedFile = try await renamedFile.move(to: destination)
 
 print(movedFile.path)           // <-- print: <目标目录的路径>/image.png
 ```
@@ -297,6 +299,8 @@ try await movedFile.delete(force: true)
 * 打开文件仅用于写
 * 打开文件可用于读写
 
+所有读写 API 均提供 **async/await** 与 **EventLoopResult** 两种版本，以下示例以 async/await 为主。
+
 打开文件用于只读:
 ``` swift
 // 首先获取文件实例
@@ -304,40 +308,47 @@ let file: File = ...
 
 // 打开文件并读取其所有的数据
 // 关于 `reader`，请见 `FileReader` 的详细类型说明
-let fileData = try await file.withReader { reader in
-    reader.readData(part: .all)
-}.get()
+// ReadPart 可为 .all / .range(Range<Int64>) / .closedRange(ClosedRange<Int64>)
+let fileData: Data = try await file.withReader { reader in
+    try await reader.readData(part: .all)
+}
 ```
 
 打开文件用于写:
 ``` swift
 // 准备好要写入的数据
-let dataToWrite: ByteBuffer = ...
+let dataToWrite: Data = ...
 
 // 打开文件并将数据写入
 // 关于 `writer`，请见 `FileWriter` 的详细类型说明
+// at:     写入位置，.begin(of:) 自文件头偏移，.end(of:) 自文件尾偏移
+// method: .replace(默认) 覆盖该位置之后的数据；.insert 在该位置插入数据，原有数据后移
 try await file.withWriter { writer in
-    writer.write(at: .begin(), bytes: dataToWrite)
-}.get()
+    try await writer.write(at: .begin(), bytes: dataToWrite, method: .insert)
+}
+
+// 也可以从 AsyncThrowingChannel<Data, Error> 流式写入大文件
+try await file.withWriter { writer in
+    try await writer.write(at: .end(), from: channel, method: .replace)
+}
 ```
 
 打开文件用于读写:
 ``` swift
 // 准备好要写入的数据
-let dataToWrite: ByteBuffer = ...
+let dataToWrite: Data = ...
 
 // 打开文件将数据写入，之后将所有内容读出
 // 关于 `readWriter`，请见 `FileReader` 和 `FileWriter` 的详细类型说明
 // `FileReadWriter` 即为 `FileReader & FileWriter`
 let fileData = try await file.withReadWriter { readWriter in
-    readWriter.write(at: .begin(), bytes: dataToWrite).flatMap {
-        readWriter.readData(part: .all)
-    }
-}.get()
+    try await readWriter.write(at: .begin(), bytes: dataToWrite)
+    return try await readWriter.readData(part: .all)
+}
 
 // `dataToWrite` 以及 `fileData` 应当是一样的
-print(dataToWrite.readableBytes)
-print(fileData.readableBytes)
+print(dataToWrite.count)
+print(fileData.count)
 ```
 你也可以自己控制 Reader Writer 以及 ReadWriter 的生命周期，分别使用这些方法替代即可：
 
@@ -362,7 +373,7 @@ try await writer.close()
 
 或读写:
 ``` swift
-let readWriter = try await file.openForReadWrite()
+let readWriter = try await file.openForReadAndWrite()
 
 // ...
 
